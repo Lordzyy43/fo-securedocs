@@ -102,6 +102,18 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   deleteDocument: (id) => request(`/documents/${id}`, { method: 'DELETE' }),
+  previewDocument: async (file) => {
+    const response = await fetch(`/documents/${file.id}/preview`, {
+      credentials: 'include',
+      headers: { Accept: '*/*' },
+    })
+
+    if (!response.ok) {
+      throw new ApiError('Preview ditolak atau file tidak tersedia.', response.status)
+    }
+
+    return response.blob()
+  },
   downloadDocument: async (file) => {
     const response = await fetch(`/documents/${file.id}/download`, {
       credentials: 'include',
@@ -128,4 +140,31 @@ export const api = {
     }),
   deleteShare: (id) => request(`/document-shares/${id}`, { method: 'DELETE' }),
   auditLogs: (params) => request(`/audit-logs${toQuery(params)}`),
+  updateProfile: (payload) =>
+    request('/profile', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  changePassword: (payload) =>
+    request('/change-password', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  adminUsers: (params) => request(`/admin/users${toQuery(params)}`),
+  createAdminUser: (payload) =>
+    request('/admin/users', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateAdminUser: (id, payload) =>
+    request(`/admin/users/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  toggleUserStatus: (id) =>
+    request(`/admin/users/${id}/toggle-status`, {
+      method: 'PUT',
+    }),
+  roles: () => request('/roles'),
 }
+

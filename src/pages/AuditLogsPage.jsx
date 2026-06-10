@@ -61,7 +61,13 @@ export function AuditLogsPage({ onError }) {
     },
   ]
 
-  if (loading) return <div className="panel loading-panel">Loading audit logs...</div>
+  if (loading) {
+    return (
+      <div className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-soft">
+        Loading audit logs...
+      </div>
+    )
+  }
 
   return (
     <DataTable
