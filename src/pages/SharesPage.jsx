@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { DataTable } from '../components/DataTable.jsx'
 import { StatusBadge } from '../components/StatusBadge.jsx'
 import { api } from '../services/api.js'
+import { inferPreviewMimeType, isPreviewableMimeType } from '../utils/filePreview.js'
 import { formatDate, getPageData } from '../utils/format.js'
 
 export function SharesPage({ mode, onError, user }) {
@@ -64,13 +65,12 @@ export function SharesPage({ mode, onError, user }) {
     }
   }
 
-  async function handlePreview(doc) {
+  function handlePreview(doc) {
     setPreviewLoading(true)
     try {
-      const blob = await api.previewDocument(doc)
-      const url = URL.createObjectURL(blob)
-      setPreviewUrl(url)
-      setPreviewFile(doc)
+      const mimeType = inferPreviewMimeType(doc)
+      setPreviewUrl(api.previewDocumentUrl(doc))
+      setPreviewFile({ ...doc, mime_type: mimeType })
     } catch (error) {
       onError(error)
     } finally {
@@ -212,7 +212,7 @@ export function SharesPage({ mode, onError, user }) {
                   alt={previewFile.original_name}
                   className="max-h-[60vh] object-contain rounded-xl shadow-md"
                 />
-              ) : previewFile.mime_type === 'application/pdf' || previewFile.mime_type?.startsWith('text/') ? (
+              ) : isPreviewableMimeType(previewFile.mime_type) ? (
                 <iframe
                   src={previewUrl}
                   title={previewFile.original_name}

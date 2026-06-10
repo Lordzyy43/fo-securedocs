@@ -102,6 +102,7 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   deleteDocument: (id) => request(`/documents/${id}`, { method: 'DELETE' }),
+  previewDocumentUrl: (file) => `/documents/${file.id}/preview`,
   previewDocument: async (file) => {
     const response = await fetch(`/documents/${file.id}/preview`, {
       credentials: 'include',
