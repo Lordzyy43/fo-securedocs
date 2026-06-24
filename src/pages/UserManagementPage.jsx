@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { Plus, Edit2, UserCheck, UserX } from 'lucide-react'
 import { DataTable } from '../components/DataTable.jsx'
 import { StatusBadge } from '../components/StatusBadge.jsx'
-import { api } from '../services/api.js'
+import { api, ApiError } from '../services/api.js'
 
 export function UserManagementPage({ onError, onSuccess }) {
   const [users, setUsers] = useState([])
@@ -10,6 +10,8 @@ export function UserManagementPage({ onError, onSuccess }) {
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
+  const [addErrors, setAddErrors] = useState({})
+  const [editErrors, setEditErrors] = useState({})
 
   // Modals state
   const [showAddModal, setShowAddModal] = useState(false)
@@ -21,6 +23,7 @@ export function UserManagementPage({ onError, onSuccess }) {
     name: '',
     email: '',
     password: '',
+    password_confirmation: '',
     role_id: '',
   })
   const [editForm, setEditForm] = useState({
@@ -85,6 +88,7 @@ export function UserManagementPage({ onError, onSuccess }) {
   async function handleAddUser(event) {
     event.preventDefault()
     setSubmitting(true)
+    setAddErrors({})
     try {
       await api.createAdminUser(addForm)
       setShowAddModal(false)
@@ -92,11 +96,15 @@ export function UserManagementPage({ onError, onSuccess }) {
         name: '',
         email: '',
         password: '',
+        password_confirmation: '',
         role_id: roles.length > 0 ? String(roles[0].id) : '',
       })
       onSuccess('Pengguna baru berhasil ditambahkan.')
       await refreshData()
     } catch (error) {
+      if (error instanceof ApiError) {
+        setAddErrors(error.errors ?? {})
+      }
       onError(error)
     } finally {
       setSubmitting(false)
@@ -107,6 +115,7 @@ export function UserManagementPage({ onError, onSuccess }) {
     event.preventDefault()
     if (!selectedUser) return
     setSubmitting(true)
+    setEditErrors({})
     try {
       await api.updateAdminUser(selectedUser.id, editForm)
       setShowEditModal(false)
@@ -114,6 +123,9 @@ export function UserManagementPage({ onError, onSuccess }) {
       onSuccess('Informasi pengguna berhasil diperbarui.')
       await refreshData()
     } catch (error) {
+      if (error instanceof ApiError) {
+        setEditErrors(error.errors ?? {})
+      }
       onError(error)
     } finally {
       setSubmitting(false)
@@ -135,6 +147,7 @@ export function UserManagementPage({ onError, onSuccess }) {
   }
 
   function openEditModal(user) {
+    setEditErrors({})
     setSelectedUser(user)
     setEditForm({
       name: user.name ?? '',
@@ -225,7 +238,10 @@ export function UserManagementPage({ onError, onSuccess }) {
         </div>
         <button
           className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
-          onClick={() => setShowAddModal(true)}
+          onClick={() => {
+            setAddErrors({})
+            setShowAddModal(true)
+          }}
           type="button"
         >
           <Plus size={16} />
@@ -256,9 +272,12 @@ export function UserManagementPage({ onError, onSuccess }) {
                   placeholder="John Doe"
                   required
                   type="text"
-                  value={addForm.name}
-                />
-              </label>
+	                  value={addForm.name}
+	                />
+                  {addErrors.name?.[0] && (
+                    <p className="text-xs font-semibold text-red-600">{addErrors.name[0]}</p>
+                  )}
+	              </label>
 
               <label className="grid gap-2 text-sm font-semibold text-slate-700">
                 <span>Email Address</span>
@@ -268,20 +287,41 @@ export function UserManagementPage({ onError, onSuccess }) {
                   placeholder="john.doe@example.com"
                   required
                   type="email"
-                  value={addForm.email}
-                />
-              </label>
+	                  value={addForm.email}
+	                />
+                  {addErrors.email?.[0] && (
+                    <p className="text-xs font-semibold text-red-600">{addErrors.email[0]}</p>
+                  )}
+	              </label>
 
               <label className="grid gap-2 text-sm font-semibold text-slate-700">
                 <span>Password</span>
                 <input
                   className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
                   onChange={(e) => setAddForm({ ...addForm, password: e.target.value })}
-                  placeholder="At least 8 characters"
+	                  placeholder="Temporary password"
+	                  required
+	                  type="password"
+	                  value={addForm.password}
+	                />
+                  {addErrors.password?.[0] && (
+                    <p className="text-xs font-semibold text-red-600">{addErrors.password[0]}</p>
+                  )}
+	              </label>
+
+              <label className="grid gap-2 text-sm font-semibold text-slate-700">
+                <span>Confirm Password</span>
+                <input
+                  className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
+                  onChange={(e) => setAddForm({ ...addForm, password_confirmation: e.target.value })}
+                  placeholder="Repeat temporary password"
                   required
                   type="password"
-                  value={addForm.password}
+                  value={addForm.password_confirmation}
                 />
+                {addErrors.password_confirmation?.[0] && (
+                  <p className="text-xs font-semibold text-red-600">{addErrors.password_confirmation[0]}</p>
+                )}
               </label>
 
               <label className="grid gap-2 text-sm font-semibold text-slate-700">
@@ -296,9 +336,12 @@ export function UserManagementPage({ onError, onSuccess }) {
                     <option key={role.id} value={role.id}>
                       {role.name}
                     </option>
-                  ))}
-                </select>
-              </label>
+	                  ))}
+	                </select>
+                  {addErrors.role_id?.[0] && (
+                    <p className="text-xs font-semibold text-red-600">{addErrors.role_id[0]}</p>
+                  )}
+	              </label>
 
               <div className="mt-4 flex items-center justify-end gap-3">
                 <button
@@ -334,9 +377,12 @@ export function UserManagementPage({ onError, onSuccess }) {
                   onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
                   required
                   type="text"
-                  value={editForm.name}
-                />
-              </label>
+	                  value={editForm.name}
+	                />
+                  {editErrors.name?.[0] && (
+                    <p className="text-xs font-semibold text-red-600">{editErrors.name[0]}</p>
+                  )}
+	              </label>
 
               <label className="grid gap-2 text-sm font-semibold text-slate-700">
                 <span>Email Address</span>
@@ -345,9 +391,12 @@ export function UserManagementPage({ onError, onSuccess }) {
                   onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
                   required
                   type="email"
-                  value={editForm.email}
-                />
-              </label>
+	                  value={editForm.email}
+	                />
+                  {editErrors.email?.[0] && (
+                    <p className="text-xs font-semibold text-red-600">{editErrors.email[0]}</p>
+                  )}
+	              </label>
 
               <label className="grid gap-2 text-sm font-semibold text-slate-700">
                 <span>Role Assignment</span>
@@ -361,9 +410,12 @@ export function UserManagementPage({ onError, onSuccess }) {
                     <option key={role.id} value={role.id}>
                       {role.name}
                     </option>
-                  ))}
-                </select>
-              </label>
+	                  ))}
+	                </select>
+                  {editErrors.role_id?.[0] && (
+                    <p className="text-xs font-semibold text-red-600">{editErrors.role_id[0]}</p>
+                  )}
+	              </label>
 
               <div className="mt-4 flex items-center justify-end gap-3">
                 <button
