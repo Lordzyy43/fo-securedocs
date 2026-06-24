@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CheckCircle2, Circle, KeyRound, ShieldCheck, User } from 'lucide-react'
+import { CheckCircle2, Circle, KeyRound, Mail, Save, ShieldCheck, User } from 'lucide-react'
 import { api, ApiError } from '../services/api.js'
 
 const passwordRules = [
@@ -115,59 +115,86 @@ export function ProfilePage({ onError, onSuccess, user, onUpdateUser, requiresPa
         </div>
       </section>
 
-      {/* Forms Grid */}
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* Update Profile Card */}
-        <section className={`rounded-[2rem] border border-slate-200 bg-white p-6 shadow-soft ${requiresPasswordChange ? 'opacity-60' : ''}`}>
-          <div className="mb-6 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-700">
-              <User size={18} />
-            </div>
-            <div>
-              <h3 className="text-lg font-bold text-slate-950">Personal Information</h3>
-              <p className="text-xs text-slate-400">Update your account name and email address.</p>
+      <div className="grid gap-6 lg:grid-cols-[1.08fr_0.92fr]">
+        <section className={`overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-soft ${requiresPasswordChange ? 'opacity-60' : ''}`}>
+          <div className="border-b border-slate-200 bg-slate-950 p-6 text-white">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.24em] text-emerald-300">Account Identity</p>
+                <h3 className="mt-2 text-2xl font-semibold">{profileForm.name || user.name}</h3>
+                <p className="mt-1 text-sm text-slate-300">{profileForm.email || user.email}</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-2 text-xs font-bold uppercase tracking-wide text-emerald-100">
+                {user.role?.name ?? 'user'}
+              </div>
             </div>
           </div>
 
-          <form onSubmit={handleUpdateProfile} className="grid gap-4">
-            <label className="grid gap-2 text-sm font-semibold text-slate-700">
-              <span>Full Name</span>
-              <input
-                className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
-                onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
-                required
-                disabled={requiresPasswordChange}
-                type="text"
-                value={profileForm.name}
-              />
-              {profileErrors.name?.[0] && (
-                <p className="text-xs font-semibold text-red-600">{profileErrors.name[0]}</p>
-              )}
-            </label>
+          <div className="grid gap-6 p-6 xl:grid-cols-[0.85fr_1.15fr]">
+            <div className="grid content-start gap-3">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-white text-slate-700 shadow-sm">
+                  <User size={18} />
+                </div>
+                <p className="text-xs font-bold uppercase text-slate-400">Nama Saat Ini</p>
+                <p className="mt-1 break-words text-sm font-semibold text-slate-950">{user.name}</p>
+              </div>
 
-            <label className="grid gap-2 text-sm font-semibold text-slate-700">
-              <span>Email Address</span>
-              <input
-                className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
-                onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })}
-                required
-                disabled={requiresPasswordChange}
-                type="email"
-                value={profileForm.email}
-              />
-              {profileErrors.email?.[0] && (
-                <p className="text-xs font-semibold text-red-600">{profileErrors.email[0]}</p>
-              )}
-            </label>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-white text-slate-700 shadow-sm">
+                  <Mail size={18} />
+                </div>
+                <p className="text-xs font-bold uppercase text-slate-400">Email Saat Ini</p>
+                <p className="mt-1 break-words text-sm font-semibold text-slate-950">{user.email}</p>
+              </div>
+            </div>
 
-            <button
-              className="mt-2 inline-flex items-center justify-center rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60"
-              disabled={updatingProfile || requiresPasswordChange}
-              type="submit"
-            >
-              {updatingProfile ? 'Saving...' : 'Save Profile'}
-            </button>
-          </form>
+            <form onSubmit={handleUpdateProfile} className="grid content-start gap-4">
+              <div>
+                <h3 className="text-lg font-bold text-slate-950">Edit Nama dan Email</h3>
+                <p className="mt-1 text-xs text-slate-500">Perubahan akan langsung memperbarui data session akun.</p>
+              </div>
+
+              <label className="grid gap-2 text-sm font-semibold text-slate-700">
+                <span>Nama Lengkap</span>
+                <input
+                  className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 disabled:opacity-60"
+                  onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
+                  required
+                  disabled={requiresPasswordChange}
+                  type="text"
+                  value={profileForm.name}
+                />
+                {profileErrors.name?.[0] && (
+                  <p className="text-xs font-semibold text-red-600">{profileErrors.name[0]}</p>
+                )}
+              </label>
+
+              <label className="grid gap-2 text-sm font-semibold text-slate-700">
+                <span>Email</span>
+                <input
+                  className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 disabled:opacity-60"
+                  onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })}
+                  required
+                  disabled={requiresPasswordChange}
+                  type="email"
+                  value={profileForm.email}
+                />
+                {profileErrors.email?.[0] && (
+                  <p className="text-xs font-semibold text-red-600">{profileErrors.email[0]}</p>
+                )}
+              </label>
+
+              <button
+                className="mt-2 inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-60"
+                disabled={updatingProfile || requiresPasswordChange}
+                type="submit"
+              >
+                <Save size={16} />
+                {updatingProfile ? 'Menyimpan...' : 'Simpan Perubahan'}
+              </button>
+            </form>
+          </div>
         </section>
 
         {/* Change Password Card */}
