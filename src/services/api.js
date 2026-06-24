@@ -14,6 +14,27 @@ export class ApiError extends Error {
   }
 }
 
+function firstValidationMessage(errors = {}) {
+  return Object.values(errors)
+    .flat()
+    .find((message) => typeof message === 'string' && message.length > 0)
+}
+
+function resolveErrorMessage(data, status) {
+  if (typeof data === 'string' && data.trim()) return data
+  if (data?.message) return data.message
+
+  const validationMessage = firstValidationMessage(data?.errors)
+  if (validationMessage) return validationMessage
+
+  if (status === 419) return 'Sesi keamanan sudah kedaluwarsa. Silakan refresh halaman lalu coba lagi.'
+  if (status === 403) return 'Akses ditolak. Akun Anda tidak memiliki izin untuk aksi ini.'
+  if (status === 404) return 'Data yang diminta tidak ditemukan.'
+  if (status >= 500) return 'Server sedang bermasalah. Silakan coba lagi sebentar lagi.'
+
+  return 'Permintaan gagal diproses. Periksa input lalu coba lagi.'
+}
+
 async function getCsrfToken() {
   if (csrfToken) return csrfToken
 
@@ -28,12 +49,13 @@ async function getCsrfToken() {
 }
 
 async function request(path, options = {}) {
+  const { _csrfRetried = false, ...fetchOptions } = options
   const method = options.method ?? 'GET'
   const isWrite = !['GET', 'HEAD'].includes(method.toUpperCase())
   const headers = {
     Accept: 'application/json',
-    ...(options.body instanceof FormData ? {} : jsonHeaders),
-    ...(options.headers ?? {}),
+    ...(fetchOptions.body instanceof FormData ? {} : jsonHeaders),
+    ...(fetchOptions.headers ?? {}),
   }
 
   if (isWrite) {
@@ -42,12 +64,20 @@ async function request(path, options = {}) {
 
   const response = await fetch(path, {
     credentials: 'include',
-    ...options,
+    ...fetchOptions,
     method,
     headers,
   })
 
-  if (response.status === 204) return null
+  if (response.status === 419 && isWrite && ! _csrfRetried) {
+    csrfToken = null
+    return request(path, { ...fetchOptions, _csrfRetried: true })
+  }
+
+  if (response.status === 204) {
+    if (path === '/logout') csrfToken = null
+    return null
+  }
 
   const contentType = response.headers.get('content-type') ?? ''
   const data = contentType.includes('application/json')
@@ -56,11 +86,13 @@ async function request(path, options = {}) {
 
   if (!response.ok) {
     throw new ApiError(
-      data?.message || 'Request failed.',
+      resolveErrorMessage(data, response.status),
       response.status,
       data?.errors ?? {},
     )
   }
+
+  if (path === '/logout') csrfToken = null
 
   return data
 }
@@ -78,6 +110,9 @@ function toQuery(params = {}) {
 }
 
 export const api = {
+  resetCsrfToken: () => {
+    csrfToken = null
+  },
   me: () => request('/me'),
   login: (payload) =>
     request('/login', {
@@ -168,4 +203,3 @@ export const api = {
     }),
   roles: () => request('/roles'),
 }
-

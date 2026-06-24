@@ -1,17 +1,20 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
+  CheckCircle2,
+  Circle,
   Eye,
   EyeOff,
+  KeyRound,
   Mail,
   ShieldAlert,
   ShieldCheck,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
 import { Button } from "../components/ui/Button.jsx";
-import { ApiError } from "../services/api.js";
+import { api, ApiError } from "../services/api.js";
 
 const loginSchema = z.object({
   email: z
@@ -22,10 +25,45 @@ const loginSchema = z.object({
   remember: z.boolean(),
 });
 
-export function LoginPage({ onLogin }) {
+const passwordRules = [
+  {
+    id: "length",
+    label: "Minimal 8 karakter",
+    test: (password) => password.length >= 8,
+  },
+  {
+    id: "uppercase",
+    label: "Ada huruf besar",
+    test: (password) => /[A-Z]/.test(password),
+  },
+  {
+    id: "lowercase",
+    label: "Ada huruf kecil",
+    test: (password) => /[a-z]/.test(password),
+  },
+  {
+    id: "number",
+    label: "Ada angka",
+    test: (password) => /\d/.test(password),
+  },
+  {
+    id: "symbol",
+    label: "Ada simbol",
+    test: (password) => /[^A-Za-z0-9]/.test(password),
+  },
+];
+
+export function LoginPage({
+  pendingPasswordChangeUser = null,
+  onLogin,
+  onLogout,
+  onPasswordChanged,
+}) {
   const {
     register,
     handleSubmit,
+    setError: setFieldError,
+    reset,
     formState: { errors, isSubmitting },
   } = useForm({
     resolver: zodResolver(loginSchema),
@@ -37,19 +75,105 @@ export function LoginPage({ onLogin }) {
   });
 
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState("");
+  const [bannerError, setBannerError] = useState("");
+  const [bannerSuccess, setBannerSuccess] = useState("");
+  const [passwordChangeUser, setPasswordChangeUser] = useState(pendingPasswordChangeUser);
+  const [passwordForm, setPasswordForm] = useState({
+    current_password: "",
+    password: "",
+    password_confirmation: "",
+  });
+  const [passwordErrors, setPasswordErrors] = useState({});
+  const [changingPassword, setChangingPassword] = useState(false);
+  const passwordChecks = passwordRules.map((rule) => ({
+    ...rule,
+    passed: rule.test(passwordForm.password),
+  }));
+  const confirmationMatches =
+    passwordForm.password.length > 0 &&
+    passwordForm.password_confirmation.length > 0 &&
+    passwordForm.password === passwordForm.password_confirmation;
+
+  useEffect(() => {
+    setPasswordChangeUser(pendingPasswordChangeUser);
+  }, [pendingPasswordChangeUser]);
 
   async function submit(values) {
-    setError("");
+    setBannerError("");
+    setBannerSuccess("");
     try {
-      await onLogin(values);
+      const result = await onLogin(values);
+      if (result?.requiresPasswordChange) {
+        setPasswordChangeUser(result.user);
+        setPasswordForm({
+          current_password: values.password,
+          password: "",
+          password_confirmation: "",
+        });
+        setPasswordErrors({});
+      }
     } catch (err) {
-      setError(
+      if (err instanceof ApiError) {
+        Object.entries(err.errors ?? {}).forEach(([field, messages]) => {
+          setFieldError(field, {
+            type: "server",
+            message: messages?.[0] ?? err.message,
+          });
+        });
+      }
+
+      setBannerError(
         err instanceof ApiError
           ? err.message
           : "Autentikasi gagal. Silakan coba kembali.",
       );
     }
+  }
+
+  async function submitPasswordChange(event) {
+    event.preventDefault();
+    setChangingPassword(true);
+    setPasswordErrors({});
+    setBannerError("");
+
+    try {
+      const response = await api.changePassword(passwordForm);
+      const email = passwordChangeUser?.email ?? "";
+      api.resetCsrfToken();
+      setPasswordChangeUser(null);
+      setPasswordForm({
+        current_password: "",
+        password: "",
+        password_confirmation: "",
+      });
+      await onPasswordChanged();
+      reset({
+        email,
+        password: "",
+        remember: true,
+      });
+      setBannerSuccess(response?.message ?? "Password berhasil diganti. Silakan login ulang dengan password baru.");
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setPasswordErrors(err.errors ?? {});
+        setBannerError(err.message);
+      } else {
+        setBannerError("Password gagal diganti. Silakan coba kembali.");
+      }
+    } finally {
+      setChangingPassword(false);
+    }
+  }
+
+  async function cancelPasswordChange() {
+    setPasswordChangeUser(null);
+    setPasswordForm({
+      current_password: "",
+      password: "",
+      password_confirmation: "",
+    });
+    setPasswordErrors({});
+    await onLogout();
   }
 
   return (
@@ -145,13 +269,23 @@ export function LoginPage({ onLogin }) {
                 </div>
 
                 {/* Banner Error */}
-                {error && (
+                {bannerError && (
                   <div className="mt-5 flex gap-2.5 rounded-lg border border-red-100 bg-red-50/60 p-3 text-xs font-semibold text-red-800 animate-in fade-in duration-150">
                     <ShieldAlert
                       size={16}
                       className="shrink-0 text-red-600 mt-0.5"
                     />
-                    <span>{error}</span>
+                    <span>{bannerError}</span>
+                  </div>
+                )}
+
+                {bannerSuccess && (
+                  <div className="mt-5 flex gap-2.5 rounded-lg border border-emerald-100 bg-emerald-50/70 p-3 text-xs font-semibold text-emerald-800 animate-in fade-in duration-150">
+                    <ShieldCheck
+                      size={16}
+                      className="shrink-0 text-emerald-600 mt-0.5"
+                    />
+                    <span>{bannerSuccess}</span>
                   </div>
                 )}
 
@@ -275,6 +409,134 @@ export function LoginPage({ onLogin }) {
           </section>
         </div>
       </div>
+
+      {passwordChangeUser && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+            <div className="mb-5 flex items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
+                <KeyRound size={20} />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-950">
+                  Ganti Password Pertama Kali
+                </h3>
+                <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                  Akun {passwordChangeUser.email} masih memakai password sementara dari admin.
+                </p>
+              </div>
+            </div>
+
+            <form className="grid gap-4" onSubmit={submitPasswordChange}>
+              <label className="grid gap-2 text-sm font-semibold text-slate-700">
+                <span>Password Sementara</span>
+                <input
+                  className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                  onChange={(event) =>
+                    setPasswordForm({ ...passwordForm, current_password: event.target.value })
+                  }
+                  required
+                  type="password"
+                  value={passwordForm.current_password}
+                />
+                {passwordErrors.current_password?.[0] && (
+                  <p className="text-xs font-semibold text-red-600">
+                    {passwordErrors.current_password[0]}
+                  </p>
+                )}
+              </label>
+
+              <label className="grid gap-2 text-sm font-semibold text-slate-700">
+                <span>Password Baru</span>
+                <input
+                  className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                  onChange={(event) =>
+                    setPasswordForm({ ...passwordForm, password: event.target.value })
+                  }
+                  required
+                  type="password"
+                  value={passwordForm.password}
+                />
+                {passwordErrors.password?.[0] && (
+                  <p className="text-xs font-semibold text-red-600">
+                    {passwordErrors.password[0]}
+                  </p>
+                )}
+              </label>
+
+              <div className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-bold uppercase text-slate-500">
+                  Syarat Password Baru
+                </p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {passwordChecks.map((rule) => (
+                    <div
+                      className={`flex items-center gap-2 text-xs font-semibold ${
+                        rule.passed ? "text-emerald-700" : "text-slate-400"
+                      }`}
+                      key={rule.id}
+                    >
+                      {rule.passed ? <CheckCircle2 size={15} /> : <Circle size={15} />}
+                      <span>{rule.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <label className="grid gap-2 text-sm font-semibold text-slate-700">
+                <span>Konfirmasi Password Baru</span>
+                <input
+                  className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                  onChange={(event) =>
+                    setPasswordForm({
+                      ...passwordForm,
+                      password_confirmation: event.target.value,
+                    })
+                  }
+                  required
+                  type="password"
+                  value={passwordForm.password_confirmation}
+                />
+                {passwordErrors.password_confirmation?.[0] && (
+                  <p className="text-xs font-semibold text-red-600">
+                    {passwordErrors.password_confirmation[0]}
+                  </p>
+                )}
+                {passwordForm.password_confirmation ? (
+                  <p
+                    className={`inline-flex items-center gap-2 text-xs font-semibold ${
+                      confirmationMatches ? "text-emerald-700" : "text-red-600"
+                    }`}
+                  >
+                    {confirmationMatches ? <CheckCircle2 size={15} /> : <Circle size={15} />}
+                    {confirmationMatches
+                      ? "Konfirmasi password sudah sama."
+                      : "Konfirmasi password belum sama."}
+                  </p>
+                ) : null}
+              </label>
+
+              <div className="mt-2 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <button
+                  className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  disabled={changingPassword}
+                  onClick={cancelPasswordChange}
+                  type="button"
+                >
+                  Logout
+                </button>
+                <button
+                  className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+                  disabled={changingPassword}
+                  type="submit"
+                >
+                  {changingPassword ? "Mengganti..." : "Simpan Password Baru"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

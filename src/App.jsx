@@ -14,11 +14,14 @@ const INITIAL_VIEW = "dashboard";
 
 function App() {
   const [user, setUser] = useState(null);
+  const [pendingPasswordChangeUser, setPendingPasswordChangeUser] = useState(null);
   const [view, setView] = useState(INITIAL_VIEW);
   const [booting, setBooting] = useState(true);
   const [notice, setNotice] = useState(null);
 
   const isAdmin = user?.role?.name === "admin";
+  const mustChangePassword = Boolean(user?.force_password_change);
+  const activeView = mustChangePassword ? "profile" : view;
 
   // Selaraskan judul dengan komponen AppLayout kustom baru kita
   const pageTitles = useMemo(
@@ -64,11 +67,20 @@ function App() {
     api
       .me()
       .then((userData) => {
-        if (isMounted) setUser(userData);
+        if (isMounted) {
+          if (userData.force_password_change) {
+            setPendingPasswordChangeUser(userData);
+            setUser(null);
+          } else {
+            setPendingPasswordChangeUser(null);
+            setUser(userData);
+          }
+        }
       })
       .catch((err) => {
         if (isMounted) {
           setUser(null);
+          setPendingPasswordChangeUser(null);
           // Tidak perlu memunculkan error berisik jika statusnya memang cuma belum login (401)
           if (err instanceof ApiError && err.status !== 401) {
             showError(err);
@@ -89,12 +101,26 @@ function App() {
     try {
       setNotice(null);
       const response = await api.login(credentials);
+      if (response.user.force_password_change) {
+        setPendingPasswordChangeUser(response.user);
+        setUser(null);
+        return {
+          requiresPasswordChange: true,
+          user: response.user,
+        };
+      }
+
+      setPendingPasswordChangeUser(null);
       setUser(response.user);
       setView(INITIAL_VIEW);
       setNotice({
         type: "success",
         message: "Autentikasi berhasil. Selamat datang kembali.",
       });
+      return {
+        requiresPasswordChange: false,
+        user: response.user,
+      };
     } catch (error) {
       showError(error);
       // Lempar balik error-nya agar LoginPage tahu kalau proses login gagal
@@ -111,19 +137,28 @@ function App() {
     } finally {
       // Standar keamanan produksi: Tetap hapus session di UI walaupun request API logout gagal/RTO
       setUser(null);
+      setPendingPasswordChangeUser(null);
       setView(INITIAL_VIEW);
       setNotice(null);
     }
   }
 
+  async function handlePasswordChanged() {
+    setPendingPasswordChangeUser(null);
+    setUser(null);
+    setView(INITIAL_VIEW);
+    setNotice(null);
+    api.resetCsrfToken();
+  }
+
   // Render komponen halaman secara dinamis berdasarkan state view
   function renderPage() {
-    switch (view) {
+    switch (activeView) {
       case "documents":
       case "upload":
         return (
           <DocumentsPage
-            mode={view}
+            mode={activeView}
             isAdmin={isAdmin}
             onError={showError}
             onSuccess={(message) => setNotice({ type: "success", message })}
@@ -131,7 +166,7 @@ function App() {
         );
       case "incoming":
       case "sent":
-        return <SharesPage mode={view} user={user} onError={showError} />;
+        return <SharesPage mode={activeView} user={user} onError={showError} />;
       case "profile":
         return (
           <ProfilePage
@@ -139,6 +174,7 @@ function App() {
             onSuccess={(message) => setNotice({ type: "success", message })}
             user={user}
             onUpdateUser={setUser}
+            requiresPasswordChange={mustChangePassword}
           />
         );
       case "users":
@@ -202,20 +238,38 @@ function App() {
 
   // 2. JALUR UNTUK PENGGUNA YANG BELUM LOGIN
   if (!user) {
-    return <LoginPage onLogin={handleLogin} />;
+    return (
+      <LoginPage
+        pendingPasswordChangeUser={pendingPasswordChangeUser}
+        onLogin={handleLogin}
+        onLogout={handleLogout}
+        onPasswordChanged={handlePasswordChanged}
+      />
+    );
   }
 
   // 3. JALUR UTAMA UTK WORKSPACE DASHBOARD
   return (
     <AppLayout
-      activeView={view}
-      currentTitle={pageTitles[view] ?? "Dashboard Overview"}
+      activeView={activeView}
+      currentTitle={pageTitles[activeView] ?? "Dashboard Overview"}
       isAdmin={isAdmin}
       notice={notice}
       user={user}
       onDismissNotice={() => setNotice(null)}
       onLogout={handleLogout}
-      onNavigate={setView}
+      onNavigate={(nextView) => {
+        if (mustChangePassword && nextView !== "profile") {
+          setNotice({
+            type: "error",
+            message: "Anda wajib mengganti password sementara sebelum mengakses fitur lain.",
+          });
+          setView("profile");
+          return;
+        }
+
+        setView(nextView);
+      }}
     >
       {renderPage()}
     </AppLayout>
