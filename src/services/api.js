@@ -216,5 +216,15 @@ export const api = {
     request(`/admin/users/${id}/toggle-status`, {
       method: 'PUT',
     }),
+  resetAdminUserPassword: (id, payload) =>
+    request(`/admin/users/${id}/reset-password`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  resetAdminUserPin: (id, payload) =>
+    request(`/admin/users/${id}/reset-pin`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
   roles: () => request('/roles'),
 }

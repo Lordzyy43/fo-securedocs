@@ -102,11 +102,12 @@ export function LoginPage({
     defaultValues: {
       email: "",
       password: "",
-      remember: true,
+      remember: false,
     },
   });
 
   const [showPassword, setShowPassword] = useState(false);
+  const [showForgotPasswordInfo, setShowForgotPasswordInfo] = useState(false);
   const [bannerError, setBannerError] = useState("");
   const [bannerSuccess, setBannerSuccess] = useState("");
   const [passwordChangeUser, setPasswordChangeUser] = useState(pendingPasswordChangeUser);
@@ -203,7 +204,7 @@ export function LoginPage({
       reset({
         email,
         password: "",
-        remember: true,
+        remember: false,
       });
       setBannerSuccess(response?.message ?? "Password berhasil diganti. Silakan login ulang dengan password baru.");
     } catch (err) {
@@ -465,6 +466,7 @@ export function LoginPage({
                       <button
                         type="button"
                         className="text-[11px] font-bold text-emerald-600 hover:text-emerald-700 transition-colors"
+                        onClick={() => setShowForgotPasswordInfo(true)}
                       >
                         Lupa sandi?
                       </button>
@@ -500,19 +502,6 @@ export function LoginPage({
                         {errors.password.message}
                       </p>
                     )}
-                  </div>
-
-                  {/* Checkbox Ingat Sesi */}
-                  <div className="flex items-center pt-0.5">
-                    <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 cursor-pointer select-none">
-                      <input
-                        disabled={isSubmitting}
-                        type="checkbox"
-                        {...register("remember")}
-                        className="h-3.5 w-3.5 rounded border-slate-300 text-slate-950 accent-slate-950 focus:ring-0"
-                      />
-                      Ingat sesi perangkat ini
-                    </label>
                   </div>
 
                   {/* Submit Button */}
@@ -786,6 +775,44 @@ export function LoginPage({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showForgotPasswordInfo && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-md">
+          <div className="relative w-full max-w-md overflow-hidden rounded-[2rem] border border-white/70 bg-white p-6 shadow-2xl shadow-slate-950/30 animate-in zoom-in-95 duration-150">
+            <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-emerald-300/30 blur-3xl" />
+            <div className="relative flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
+                <KeyRound size={21} />
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.28em] text-emerald-600">
+                  Bantuan Akses
+                </p>
+                <h3 className="mt-2 text-xl font-black tracking-tight text-slate-950">
+                  Lupa password?
+                </h3>
+                <p className="mt-2 text-sm leading-relaxed text-slate-500">
+                  Demi keamanan dokumen perusahaan, reset password hanya dapat dilakukan oleh admin atau tim IT kantor.
+                </p>
+              </div>
+            </div>
+
+            <div className="relative mt-5 rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-sm leading-relaxed text-emerald-900">
+              Silakan hubungi tim IT kantor untuk dibuatkan password sementara. Setelah itu Anda akan diminta mengganti password sendiri saat login.
+            </div>
+
+            <div className="relative mt-6 flex justify-end">
+              <button
+                className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-slate-800"
+                onClick={() => setShowForgotPasswordInfo(false)}
+                type="button"
+              >
+                Saya mengerti
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react'
-import { AlertTriangle, Edit2, Plus, ShieldCheck } from 'lucide-react'
+import { AlertTriangle, Edit2, KeyRound, LockKeyhole, Plus, ShieldCheck } from 'lucide-react'
 import { DataTable } from '../components/DataTable.jsx'
 import { StatusBadge } from '../components/StatusBadge.jsx'
 import { api, ApiError } from '../services/api.js'
@@ -11,13 +11,18 @@ export function UserManagementPage({ currentUser, onError, onSuccess }) {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [togglingUserId, setTogglingUserId] = useState(null)
+  const [resettingUserId, setResettingUserId] = useState(null)
   const [addErrors, setAddErrors] = useState({})
   const [editErrors, setEditErrors] = useState({})
+  const [resetPasswordErrors, setResetPasswordErrors] = useState({})
+  const [resetPinErrors, setResetPinErrors] = useState({})
 
   // Modals state
   const [showAddModal, setShowAddModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [pendingStatusUser, setPendingStatusUser] = useState(null)
+  const [pendingPasswordResetUser, setPendingPasswordResetUser] = useState(null)
+  const [pendingPinResetUser, setPendingPinResetUser] = useState(null)
   const [selectedUser, setSelectedUser] = useState(null)
 
   // Form states
@@ -33,6 +38,17 @@ export function UserManagementPage({ currentUser, onError, onSuccess }) {
     email: '',
     role_id: '',
   })
+  const [resetPasswordForm, setResetPasswordForm] = useState({
+    password: '',
+    password_confirmation: '',
+  })
+  const [resetPinForm, setResetPinForm] = useState({
+    admin_pin: '',
+  })
+
+  function sanitizePin(value) {
+    return value.replace(/\D/g, '').slice(0, 6)
+  }
 
   // Refresh data from event handlers
   async function refreshData() {
@@ -155,6 +171,71 @@ export function UserManagementPage({ currentUser, onError, onSuccess }) {
     }
   }
 
+  async function handleResetPassword(event) {
+    event.preventDefault()
+    if (!pendingPasswordResetUser) return
+
+    setResettingUserId(pendingPasswordResetUser.id)
+    setResetPasswordErrors({})
+    try {
+      const response = await api.resetAdminUserPassword(
+        pendingPasswordResetUser.id,
+        resetPasswordForm,
+      )
+      setUsers((currentUsers) =>
+        currentUsers.map((item) =>
+          item.id === response.user.id ? response.user : item,
+        ),
+      )
+      setPendingPasswordResetUser(null)
+      setResetPasswordForm({
+        password: '',
+        password_confirmation: '',
+      })
+      onSuccess(response.message)
+      await refreshData()
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setResetPasswordErrors(error.errors ?? {})
+      }
+      onError(error)
+    } finally {
+      setResettingUserId(null)
+    }
+  }
+
+  async function handleResetPin(event) {
+    event.preventDefault()
+    if (!pendingPinResetUser) return
+
+    setResettingUserId(pendingPinResetUser.id)
+    setResetPinErrors({})
+    try {
+      const response = await api.resetAdminUserPin(
+        pendingPinResetUser.id,
+        resetPinForm,
+      )
+      setUsers((currentUsers) =>
+        currentUsers.map((item) =>
+          item.id === response.user.id ? response.user : item,
+        ),
+      )
+      setPendingPinResetUser(null)
+      setResetPinForm({
+        admin_pin: '',
+      })
+      onSuccess(response.message)
+      await refreshData()
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setResetPinErrors(error.errors ?? {})
+      }
+      onError(error)
+    } finally {
+      setResettingUserId(null)
+    }
+  }
+
   function openEditModal(user) {
     setEditErrors({})
     setSelectedUser(user)
@@ -260,6 +341,37 @@ export function UserManagementPage({ currentUser, onError, onSuccess }) {
             type="button"
           >
             <Edit2 size={15} />
+          </button>
+          <button
+            aria-label={`Reset password ${u.name}`}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-amber-200 bg-amber-50 text-amber-700 shadow-sm transition hover:bg-amber-100"
+            onClick={() => {
+              setResetPasswordErrors({})
+              setResetPasswordForm({
+                password: '',
+                password_confirmation: '',
+              })
+              setPendingPasswordResetUser(u)
+            }}
+            title="Reset password sementara"
+            type="button"
+          >
+            <KeyRound size={15} />
+          </button>
+          <button
+            aria-label={`Reset PIN ${u.name}`}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-cyan-200 bg-cyan-50 text-cyan-700 shadow-sm transition hover:bg-cyan-100"
+            onClick={() => {
+              setResetPinErrors({})
+              setResetPinForm({
+                admin_pin: '',
+              })
+              setPendingPinResetUser(u)
+            }}
+            title="Reset PIN"
+            type="button"
+          >
+            <LockKeyhole size={15} />
           </button>
         </div>
       ),
@@ -382,6 +494,201 @@ export function UserManagementPage({ currentUser, onError, onSuccess }) {
                     : 'Ya, Aktifkan'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {pendingPasswordResetUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-md">
+          <div className="relative w-full max-w-lg overflow-hidden rounded-[2rem] border border-white/70 bg-white p-6 shadow-2xl shadow-slate-950/30 animate-in zoom-in-95 duration-150">
+            <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-amber-300/30 blur-3xl" />
+
+            <div className="relative flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-50 text-amber-700">
+                <KeyRound size={22} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-[0.28em] text-amber-600">
+                  Reset Password Sementara
+                </p>
+                <h3 className="mt-2 text-xl font-black tracking-tight text-slate-950">
+                  Reset password akun ini?
+                </h3>
+                <p className="mt-2 text-sm leading-relaxed text-slate-500">
+                  Admin hanya membuat password sementara. User tetap wajib mengganti password sendiri saat login berikutnya.
+                </p>
+              </div>
+            </div>
+
+            <div className="relative mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Target akun</p>
+              <p className="mt-2 font-bold text-slate-950">{pendingPasswordResetUser.name}</p>
+              <p className="text-xs font-medium text-slate-500">{pendingPasswordResetUser.email}</p>
+            </div>
+
+            <form className="relative mt-5 grid gap-4" onSubmit={handleResetPassword}>
+              <label className="grid gap-2 text-sm font-semibold text-slate-700">
+                <span>Password Sementara</span>
+                <input
+                  className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                  onChange={(event) =>
+                    setResetPasswordForm({
+                      ...resetPasswordForm,
+                      password: event.target.value,
+                    })
+                  }
+                  placeholder="Masukkan password sementara"
+                  required
+                  type="password"
+                  value={resetPasswordForm.password}
+                />
+                {resetPasswordErrors.password?.[0] && (
+                  <p className="text-xs font-semibold text-red-600">
+                    {resetPasswordErrors.password[0]}
+                  </p>
+                )}
+              </label>
+
+              <label className="grid gap-2 text-sm font-semibold text-slate-700">
+                <span>Konfirmasi Password Sementara</span>
+                <input
+                  className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                  onChange={(event) =>
+                    setResetPasswordForm({
+                      ...resetPasswordForm,
+                      password_confirmation: event.target.value,
+                    })
+                  }
+                  placeholder="Ulangi password sementara"
+                  required
+                  type="password"
+                  value={resetPasswordForm.password_confirmation}
+                />
+                {resetPasswordErrors.password_confirmation?.[0] && (
+                  <p className="text-xs font-semibold text-red-600">
+                    {resetPasswordErrors.password_confirmation[0]}
+                  </p>
+                )}
+              </label>
+
+              <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4 text-xs leading-relaxed text-amber-800">
+                Password disimpan dengan bcrypt dan akun akan dipaksa mengganti password setelah login.
+              </div>
+
+              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <button
+                  className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                  disabled={resettingUserId === pendingPasswordResetUser.id}
+                  onClick={() => {
+                    setPendingPasswordResetUser(null)
+                    setResetPasswordErrors({})
+                    setResetPasswordForm({
+                      password: '',
+                      password_confirmation: '',
+                    })
+                  }}
+                  type="button"
+                >
+                  Batal
+                </button>
+                <button
+                  className="rounded-2xl bg-amber-600 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-amber-700 disabled:opacity-60"
+                  disabled={resettingUserId === pendingPasswordResetUser.id}
+                  type="submit"
+                >
+                  {resettingUserId === pendingPasswordResetUser.id
+                    ? 'Memproses...'
+                    : 'Reset Password'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {pendingPinResetUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-md">
+          <div className="relative w-full max-w-lg overflow-hidden rounded-[2rem] border border-white/70 bg-white p-6 shadow-2xl shadow-slate-950/30 animate-in zoom-in-95 duration-150">
+            <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-cyan-300/30 blur-3xl" />
+
+            <div className="relative flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-700">
+                <LockKeyhole size={22} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-[0.28em] text-cyan-600">
+                  Reset PIN Keamanan
+                </p>
+                <h3 className="mt-2 text-xl font-black tracking-tight text-slate-950">
+                  Reset PIN akun ini?
+                </h3>
+                <p className="mt-2 text-sm leading-relaxed text-slate-500">
+                  PIN lama akan dihapus. Setelah login, user wajib membuat PIN baru sebelum dashboard terbuka.
+                </p>
+              </div>
+            </div>
+
+            <div className="relative mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Target akun</p>
+              <p className="mt-2 font-bold text-slate-950">{pendingPinResetUser.name}</p>
+              <p className="text-xs font-medium text-slate-500">{pendingPinResetUser.email}</p>
+            </div>
+
+            <div className="relative mt-5 rounded-2xl border border-cyan-100 bg-cyan-50 p-4 text-xs leading-relaxed text-cyan-800">
+              Masukkan PIN admin Anda untuk mengonfirmasi aksi sensitif ini. Reset PIN tidak mengubah password user.
+            </div>
+
+            <form className="relative mt-5 grid gap-4" onSubmit={handleResetPin}>
+              <label className="grid gap-2 text-sm font-semibold text-slate-700">
+                <span>PIN Admin</span>
+                <input
+                  autoFocus
+                  className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-center font-mono text-lg tracking-[0.35em] text-slate-900 outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
+                  inputMode="numeric"
+                  maxLength={6}
+                  onChange={(event) =>
+                    setResetPinForm({
+                      admin_pin: sanitizePin(event.target.value),
+                    })
+                  }
+                  placeholder="000000"
+                  required
+                  type="password"
+                  value={resetPinForm.admin_pin}
+                />
+                {resetPinErrors.admin_pin?.[0] && (
+                  <p className="text-xs font-semibold text-red-600">
+                    {resetPinErrors.admin_pin[0]}
+                  </p>
+                )}
+              </label>
+
+              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <button
+                  className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                  disabled={resettingUserId === pendingPinResetUser.id}
+                  onClick={() => {
+                    setPendingPinResetUser(null)
+                    setResetPinErrors({})
+                    setResetPinForm({
+                      admin_pin: '',
+                    })
+                  }}
+                  type="button"
+                >
+                  Batal
+                </button>
+                <button
+                  className="rounded-2xl bg-cyan-600 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60"
+                  disabled={resettingUserId === pendingPinResetUser.id}
+                  type="submit"
+                >
+                  {resettingUserId === pendingPinResetUser.id
+                    ? 'Memproses...'
+                    : 'Ya, Reset PIN'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
