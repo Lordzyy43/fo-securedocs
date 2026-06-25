@@ -15,6 +15,7 @@ const INITIAL_VIEW = "dashboard";
 function App() {
   const [user, setUser] = useState(null);
   const [pendingPasswordChangeUser, setPendingPasswordChangeUser] = useState(null);
+  const [pendingPinUser, setPendingPinUser] = useState(null);
   const [view, setView] = useState(INITIAL_VIEW);
   const [booting, setBooting] = useState(true);
   const [notice, setNotice] = useState(null);
@@ -70,9 +71,15 @@ function App() {
         if (isMounted) {
           if (userData.force_password_change) {
             setPendingPasswordChangeUser(userData);
+            setPendingPinUser(null);
+            setUser(null);
+          } else if (!userData.has_pin || !userData.pin_verified) {
+            setPendingPasswordChangeUser(null);
+            setPendingPinUser(userData);
             setUser(null);
           } else {
             setPendingPasswordChangeUser(null);
+            setPendingPinUser(null);
             setUser(userData);
           }
         }
@@ -81,6 +88,7 @@ function App() {
         if (isMounted) {
           setUser(null);
           setPendingPasswordChangeUser(null);
+          setPendingPinUser(null);
           // Tidak perlu memunculkan error berisik jika statusnya memang cuma belum login (401)
           if (err instanceof ApiError && err.status !== 401) {
             showError(err);
@@ -103,6 +111,7 @@ function App() {
       const response = await api.login(credentials);
       if (response.user.force_password_change) {
         setPendingPasswordChangeUser(response.user);
+        setPendingPinUser(null);
         setUser(null);
         return {
           requiresPasswordChange: true,
@@ -110,7 +119,18 @@ function App() {
         };
       }
 
+      if (!response.user.has_pin || !response.user.pin_verified) {
+        setPendingPasswordChangeUser(null);
+        setPendingPinUser(response.user);
+        setUser(null);
+        return {
+          requiresPin: true,
+          user: response.user,
+        };
+      }
+
       setPendingPasswordChangeUser(null);
+      setPendingPinUser(null);
       setUser(response.user);
       setView(INITIAL_VIEW);
       setNotice({
@@ -138,6 +158,7 @@ function App() {
       // Standar keamanan produksi: Tetap hapus session di UI walaupun request API logout gagal/RTO
       setUser(null);
       setPendingPasswordChangeUser(null);
+      setPendingPinUser(null);
       setView(INITIAL_VIEW);
       setNotice(null);
     }
@@ -145,10 +166,22 @@ function App() {
 
   async function handlePasswordChanged() {
     setPendingPasswordChangeUser(null);
+    setPendingPinUser(null);
     setUser(null);
     setView(INITIAL_VIEW);
     setNotice(null);
     api.resetCsrfToken();
+  }
+
+  function handlePinCompleted(verifiedUser) {
+    setPendingPasswordChangeUser(null);
+    setPendingPinUser(null);
+    setUser(verifiedUser);
+    setView(INITIAL_VIEW);
+    setNotice({
+      type: "success",
+      message: "PIN berhasil diverifikasi. Selamat datang kembali.",
+    });
   }
 
   // Render komponen halaman secara dinamis berdasarkan state view
@@ -241,9 +274,11 @@ function App() {
     return (
       <LoginPage
         pendingPasswordChangeUser={pendingPasswordChangeUser}
+        pendingPinUser={pendingPinUser}
         onLogin={handleLogin}
         onLogout={handleLogout}
         onPasswordChanged={handlePasswordChanged}
+        onPinCompleted={handlePinCompleted}
       />
     );
   }

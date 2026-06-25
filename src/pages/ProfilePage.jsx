@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CheckCircle2, Circle, KeyRound, Mail, Save, ShieldCheck, User } from 'lucide-react'
+import { CheckCircle2, Circle, KeyRound, LockKeyhole, Mail, Save, ShieldCheck, User } from 'lucide-react'
 import { api, ApiError } from '../services/api.js'
 
 const passwordRules = [
@@ -41,11 +41,18 @@ export function ProfilePage({ onError, onSuccess, user, onUpdateUser, requiresPa
     password: '',
     password_confirmation: '',
   })
+  const [pinForm, setPinForm] = useState({
+    current_pin: '',
+    pin: '',
+    pin_confirmation: '',
+  })
 
   const [updatingProfile, setUpdatingProfile] = useState(false)
   const [updatingPassword, setUpdatingPassword] = useState(false)
+  const [updatingPin, setUpdatingPin] = useState(false)
   const [profileErrors, setProfileErrors] = useState({})
   const [passwordErrors, setPasswordErrors] = useState({})
+  const [pinErrors, setPinErrors] = useState({})
   const passwordChecks = passwordRules.map((rule) => ({
     ...rule,
     passed: rule.test(passwordForm.password),
@@ -54,6 +61,14 @@ export function ProfilePage({ onError, onSuccess, user, onUpdateUser, requiresPa
     passwordForm.password.length > 0 &&
     passwordForm.password_confirmation.length > 0 &&
     passwordForm.password === passwordForm.password_confirmation
+  const pinConfirmationMatches =
+    pinForm.pin.length > 0 &&
+    pinForm.pin_confirmation.length > 0 &&
+    pinForm.pin === pinForm.pin_confirmation
+
+  function sanitizePin(value) {
+    return value.replace(/\D/g, '').slice(0, 6)
+  }
 
   async function handleUpdateProfile(e) {
     e.preventDefault()
@@ -93,6 +108,29 @@ export function ProfilePage({ onError, onSuccess, user, onUpdateUser, requiresPa
       onError(error)
     } finally {
       setUpdatingPassword(false)
+    }
+  }
+
+  async function handleUpdatePin(e) {
+    e.preventDefault()
+    setUpdatingPin(true)
+    setPinErrors({})
+    try {
+      const response = await api.changePin(pinForm)
+      setPinForm({
+        current_pin: '',
+        pin: '',
+        pin_confirmation: '',
+      })
+      if (response?.user) onUpdateUser(response.user)
+      onSuccess('PIN keamanan berhasil diganti.')
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setPinErrors(error.errors ?? {})
+      }
+      onError(error)
+    } finally {
+      setUpdatingPin(false)
     }
   }
 
@@ -288,6 +326,94 @@ export function ProfilePage({ onError, onSuccess, user, onUpdateUser, requiresPa
               type="submit"
             >
               {updatingPassword ? 'Updating...' : 'Change Password'}
+            </button>
+          </form>
+        </section>
+
+        {/* Change PIN Card */}
+        <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-soft lg:col-start-2">
+          <div className="mb-6 flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
+              <LockKeyhole size={18} />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-slate-950">Ganti PIN</h3>
+              <p className="text-xs text-slate-400">PIN dipakai sebagai gerbang kedua sebelum dashboard terbuka.</p>
+            </div>
+          </div>
+
+          <form onSubmit={handleUpdatePin} className="grid gap-4">
+            <label className="grid gap-2 text-sm font-semibold text-slate-700">
+              <span>PIN Saat Ini</span>
+              <input
+                className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-center font-mono text-lg tracking-[0.35em] text-slate-900 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                inputMode="numeric"
+                maxLength={6}
+                onChange={(e) => setPinForm({ ...pinForm, current_pin: sanitizePin(e.target.value) })}
+                placeholder="000000"
+                required
+                type="password"
+                value={pinForm.current_pin}
+              />
+              {pinErrors.current_pin?.[0] && (
+                <p className="text-xs font-semibold text-red-600">{pinErrors.current_pin[0]}</p>
+              )}
+            </label>
+
+            <label className="grid gap-2 text-sm font-semibold text-slate-700">
+              <span>PIN Baru</span>
+              <input
+                className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-center font-mono text-lg tracking-[0.35em] text-slate-900 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                inputMode="numeric"
+                maxLength={6}
+                onChange={(e) => setPinForm({ ...pinForm, pin: sanitizePin(e.target.value) })}
+                placeholder="000000"
+                required
+                type="password"
+                value={pinForm.pin}
+              />
+              {pinErrors.pin?.[0] && (
+                <p className="text-xs font-semibold text-red-600">{pinErrors.pin[0]}</p>
+              )}
+            </label>
+
+            <label className="grid gap-2 text-sm font-semibold text-slate-700">
+              <span>Konfirmasi PIN Baru</span>
+              <input
+                className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-center font-mono text-lg tracking-[0.35em] text-slate-900 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                inputMode="numeric"
+                maxLength={6}
+                onChange={(e) => setPinForm({ ...pinForm, pin_confirmation: sanitizePin(e.target.value) })}
+                placeholder="000000"
+                required
+                type="password"
+                value={pinForm.pin_confirmation}
+              />
+              {pinErrors.pin_confirmation?.[0] && (
+                <p className="text-xs font-semibold text-red-600">{pinErrors.pin_confirmation[0]}</p>
+              )}
+              {pinForm.pin_confirmation ? (
+                <p
+                  className={`inline-flex items-center gap-2 text-xs font-semibold ${
+                    pinConfirmationMatches ? 'text-emerald-700' : 'text-red-600'
+                  }`}
+                >
+                  {pinConfirmationMatches ? <CheckCircle2 size={15} /> : <Circle size={15} />}
+                  {pinConfirmationMatches ? 'Konfirmasi PIN sudah sama.' : 'Konfirmasi PIN belum sama.'}
+                </p>
+              ) : null}
+            </label>
+
+            <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-xs leading-relaxed text-emerald-800">
+              PIN baru hanya boleh 6 angka dan tetap disimpan sebagai hash bcrypt, bukan angka asli.
+            </div>
+
+            <button
+              className="mt-2 inline-flex items-center justify-center rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-60"
+              disabled={updatingPin}
+              type="submit"
+            >
+              {updatingPin ? 'Mengganti PIN...' : 'Simpan PIN Baru'}
             </button>
           </form>
         </section>

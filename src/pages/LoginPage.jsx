@@ -5,6 +5,8 @@ import {
   Eye,
   EyeOff,
   KeyRound,
+  Loader2,
+  LockKeyhole,
   Mail,
   ShieldAlert,
   ShieldCheck,
@@ -53,11 +55,41 @@ const passwordRules = [
   },
 ];
 
+function PinBoxes({ value, tone = "emerald" }) {
+  const activeClasses =
+    tone === "cyan"
+      ? "border-cyan-400 bg-cyan-50 text-cyan-900 shadow-cyan-100"
+      : "border-emerald-400 bg-emerald-50 text-emerald-900 shadow-emerald-100";
+
+  return (
+    <div className="grid grid-cols-6 gap-2">
+      {Array.from({ length: 6 }).map((_, index) => {
+        const filled = Boolean(value[index]);
+
+        return (
+          <div
+            className={`flex h-12 items-center justify-center rounded-2xl border text-lg font-black shadow-sm transition-all ${
+              filled
+                ? activeClasses
+                : "border-slate-200 bg-white text-slate-300"
+            }`}
+            key={index}
+          >
+            {filled ? "•" : ""}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function LoginPage({
   pendingPasswordChangeUser = null,
+  pendingPinUser = null,
   onLogin,
   onLogout,
   onPasswordChanged,
+  onPinCompleted,
 }) {
   const {
     register,
@@ -78,6 +110,7 @@ export function LoginPage({
   const [bannerError, setBannerError] = useState("");
   const [bannerSuccess, setBannerSuccess] = useState("");
   const [passwordChangeUser, setPasswordChangeUser] = useState(pendingPasswordChangeUser);
+  const [pinChallengeUser, setPinChallengeUser] = useState(pendingPinUser);
   const [passwordForm, setPasswordForm] = useState({
     current_password: "",
     password: "",
@@ -85,6 +118,12 @@ export function LoginPage({
   });
   const [passwordErrors, setPasswordErrors] = useState({});
   const [changingPassword, setChangingPassword] = useState(false);
+  const [pinForm, setPinForm] = useState({
+    pin: "",
+    pin_confirmation: "",
+  });
+  const [pinErrors, setPinErrors] = useState({});
+  const [submittingPin, setSubmittingPin] = useState(false);
   const passwordChecks = passwordRules.map((rule) => ({
     ...rule,
     passed: rule.test(passwordForm.password),
@@ -98,12 +137,17 @@ export function LoginPage({
     setPasswordChangeUser(pendingPasswordChangeUser);
   }, [pendingPasswordChangeUser]);
 
+  useEffect(() => {
+    setPinChallengeUser(pendingPinUser);
+  }, [pendingPinUser]);
+
   async function submit(values) {
     setBannerError("");
     setBannerSuccess("");
     try {
       const result = await onLogin(values);
       if (result?.requiresPasswordChange) {
+        setPinChallengeUser(null);
         setPasswordChangeUser(result.user);
         setPasswordForm({
           current_password: values.password,
@@ -111,6 +155,15 @@ export function LoginPage({
           password_confirmation: "",
         });
         setPasswordErrors({});
+      }
+      if (result?.requiresPin) {
+        setPasswordChangeUser(null);
+        setPinChallengeUser(result.user);
+        setPinForm({
+          pin: "",
+          pin_confirmation: "",
+        });
+        setPinErrors({});
       }
     } catch (err) {
       if (err instanceof ApiError) {
@@ -173,6 +226,84 @@ export function LoginPage({
       password_confirmation: "",
     });
     setPasswordErrors({});
+    await onLogout();
+  }
+
+  function sanitizePin(value) {
+    return value.replace(/\D/g, "").slice(0, 6);
+  }
+
+  async function processPin(nextForm = pinForm) {
+    if (!pinChallengeUser || submittingPin) return;
+
+    const isVerifyReady = pinChallengeUser.has_pin && nextForm.pin.length === 6;
+    const isSetupReady =
+      !pinChallengeUser.has_pin &&
+      nextForm.pin.length === 6 &&
+      nextForm.pin_confirmation.length === 6 &&
+      nextForm.pin === nextForm.pin_confirmation;
+
+    if (!isVerifyReady && !isSetupReady) return;
+
+    setSubmittingPin(true);
+    setPinErrors({});
+    setBannerError("");
+    setBannerSuccess("");
+
+    try {
+      const payload = pinChallengeUser?.has_pin
+        ? { pin: nextForm.pin }
+        : nextForm;
+      const response = pinChallengeUser?.has_pin
+        ? await api.verifyPin(payload)
+        : await api.setupPin(payload);
+
+      setPinChallengeUser(null);
+      setPinForm({
+        pin: "",
+        pin_confirmation: "",
+      });
+      onPinCompleted(response.user);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setPinErrors(err.errors ?? {});
+        setBannerError(err.message);
+        if (pinChallengeUser?.has_pin) {
+          setPinForm({
+            pin: "",
+            pin_confirmation: "",
+          });
+        }
+      } else {
+        setBannerError("PIN gagal diproses. Silakan coba kembali.");
+      }
+    } finally {
+      setSubmittingPin(false);
+    }
+  }
+
+  function submitPin(event) {
+    event.preventDefault();
+    processPin();
+  }
+
+  function updatePinValue(field, value) {
+    const nextForm = {
+      ...pinForm,
+      [field]: sanitizePin(value),
+    };
+
+    setPinForm(nextForm);
+    processPin(nextForm);
+  }
+
+  async function cancelPinChallenge() {
+    setPinChallengeUser(null);
+    setPinForm({
+      pin: "",
+      pin_confirmation: "",
+    });
+    setPinErrors({});
     await onLogout();
   }
 
@@ -531,6 +662,127 @@ export function LoginPage({
                   type="submit"
                 >
                   {changingPassword ? "Mengganti..." : "Simpan Password Baru"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {pinChallengeUser && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-md">
+          <div className="relative w-full max-w-md overflow-hidden rounded-[2rem] border border-white/70 bg-white p-6 shadow-2xl shadow-slate-950/30">
+            <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-emerald-300/30 blur-3xl" />
+            <div className="pointer-events-none absolute -bottom-20 -left-16 h-52 w-52 rounded-full bg-cyan-300/30 blur-3xl" />
+
+            <div className="relative mb-6 flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-emerald-300 shadow-lg shadow-slate-900/20">
+                <LockKeyhole size={21} />
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.28em] text-emerald-600">
+                  Secure PIN Gate
+                </p>
+                <h3 className="mt-1 text-xl font-black tracking-tight text-slate-950">
+                  {pinChallengeUser.has_pin ? "Masukkan PIN" : "Buat PIN Keamanan"}
+                </h3>
+                <p className="mt-2 text-xs leading-relaxed text-slate-500">
+                  {pinChallengeUser.has_pin
+                    ? `Akun ${pinChallengeUser.email} memerlukan PIN sebelum dashboard dibuka.`
+                    : `Akun ${pinChallengeUser.email} belum memiliki PIN. Buat PIN 6 angka terlebih dahulu.`}
+                </p>
+              </div>
+            </div>
+
+            <form className="relative grid gap-5" onSubmit={submitPin}>
+              <label className="grid gap-2 text-sm font-semibold text-slate-700">
+                <span className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                  {pinChallengeUser.has_pin ? "PIN" : "PIN Baru"}
+                </span>
+                <div className="relative">
+                  <PinBoxes value={pinForm.pin} />
+                  <input
+                    autoFocus
+                    className="absolute inset-0 h-full w-full cursor-text opacity-0"
+                    disabled={submittingPin}
+                    inputMode="numeric"
+                    maxLength={6}
+                    onChange={(event) => updatePinValue("pin", event.target.value)}
+                    required
+                    type="password"
+                    value={pinForm.pin}
+                  />
+                </div>
+                {pinErrors.pin?.[0] && (
+                  <p className="text-xs font-semibold text-red-600">{pinErrors.pin[0]}</p>
+                )}
+              </label>
+
+              {!pinChallengeUser.has_pin && (
+                <label className="grid gap-2 text-sm font-semibold text-slate-700">
+                  <span className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                    Konfirmasi PIN
+                  </span>
+                  <div className="relative">
+                    <PinBoxes value={pinForm.pin_confirmation} tone="cyan" />
+                    <input
+                      className="absolute inset-0 h-full w-full cursor-text opacity-0"
+                      disabled={submittingPin}
+                      inputMode="numeric"
+                      maxLength={6}
+                      onChange={(event) =>
+                        updatePinValue("pin_confirmation", event.target.value)
+                      }
+                      required
+                      type="password"
+                      value={pinForm.pin_confirmation}
+                    />
+                  </div>
+                  {pinErrors.pin_confirmation?.[0] && (
+                    <p className="text-xs font-semibold text-red-600">
+                      {pinErrors.pin_confirmation[0]}
+                    </p>
+                  )}
+                  {pinForm.pin_confirmation ? (
+                    <p
+                      className={`inline-flex items-center gap-2 text-xs font-semibold ${
+                        pinForm.pin === pinForm.pin_confirmation
+                          ? "text-emerald-700"
+                          : "text-red-600"
+                      }`}
+                    >
+                      {pinForm.pin === pinForm.pin_confirmation ? (
+                        <CheckCircle2 size={15} />
+                      ) : (
+                        <Circle size={15} />
+                      )}
+                      {pinForm.pin === pinForm.pin_confirmation
+                        ? "Konfirmasi PIN sudah sama."
+                        : "Konfirmasi PIN belum sama."}
+                    </p>
+                  ) : null}
+                </label>
+              )}
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 text-xs leading-relaxed text-slate-500">
+                {submittingPin ? (
+                  <span className="inline-flex items-center gap-2 font-bold text-slate-700">
+                    <Loader2 className="animate-spin text-emerald-600" size={15} />
+                    Memproses PIN otomatis...
+                  </span>
+                ) : (
+                  "Isi 6 angka, sistem akan otomatis membuka dashboard tanpa tombol. PIN tetap disimpan dalam bentuk hash."
+                )}
+              </div>
+
+              <div className="mt-1 flex justify-center">
+                <button
+                  className="rounded-full border border-slate-200 bg-white px-5 py-2.5 text-xs font-bold text-slate-600 shadow-sm hover:bg-slate-50 disabled:opacity-60"
+                  disabled={submittingPin}
+                  onClick={cancelPinChallenge}
+                  type="button"
+                >
+                  Logout
                 </button>
               </div>
             </form>

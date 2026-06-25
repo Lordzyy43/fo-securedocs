@@ -120,6 +120,21 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   logout: () => request('/logout', { method: 'POST' }),
+  setupPin: (payload) =>
+    request('/pin/setup', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  verifyPin: (payload) =>
+    request('/pin/verify', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  changePin: (payload) =>
+    request('/pin/change', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
   users: () => request('/users'),
   documents: (params) => request(`/documents${toQuery(params)}`),
   uploadDocument: (file) => {
