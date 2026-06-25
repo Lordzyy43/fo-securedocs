@@ -1,21 +1,23 @@
 import { useEffect, useState, useMemo } from 'react'
-import { Plus, Edit2, UserCheck, UserX } from 'lucide-react'
+import { AlertTriangle, Edit2, Plus, ShieldCheck } from 'lucide-react'
 import { DataTable } from '../components/DataTable.jsx'
 import { StatusBadge } from '../components/StatusBadge.jsx'
 import { api, ApiError } from '../services/api.js'
 
-export function UserManagementPage({ onError, onSuccess }) {
+export function UserManagementPage({ currentUser, onError, onSuccess }) {
   const [users, setUsers] = useState([])
   const [roles, setRoles] = useState([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
+  const [togglingUserId, setTogglingUserId] = useState(null)
   const [addErrors, setAddErrors] = useState({})
   const [editErrors, setEditErrors] = useState({})
 
   // Modals state
   const [showAddModal, setShowAddModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
+  const [pendingStatusUser, setPendingStatusUser] = useState(null)
   const [selectedUser, setSelectedUser] = useState(null)
 
   // Form states
@@ -133,16 +135,23 @@ export function UserManagementPage({ onError, onSuccess }) {
   }
 
   async function handleToggleStatus(user) {
-    const actionText = user.status === 'active' ? 'nonaktifkan' : 'aktifkan'
-    const confirmed = window.confirm(`Apakah Anda yakin ingin me-${actionText} pengguna ${user.name}?`)
-    if (!confirmed) return
-
+    setTogglingUserId(user.id)
     try {
-      await api.toggleUserStatus(user.id)
-      onSuccess(`Status pengguna ${user.name} berhasil diubah.`)
+      const updatedUser = await api.toggleUserStatus(user.id)
+      setUsers((currentUsers) =>
+        currentUsers.map((item) => (item.id === updatedUser.id ? updatedUser : item)),
+      )
+      onSuccess(
+        updatedUser.status === 'active'
+          ? `Akun ${updatedUser.name} berhasil diaktifkan.`
+          : `Akun ${updatedUser.name} berhasil dinonaktifkan.`,
+      )
       await refreshData()
     } catch (error) {
       onError(error)
+    } finally {
+      setTogglingUserId(null)
+      setPendingStatusUser(null)
     }
   }
 
@@ -183,12 +192,61 @@ export function UserManagementPage({ onError, onSuccess }) {
     },
     {
       key: 'status',
-      label: 'Status',
-      render: (u) => (
-        <StatusBadge tone={u.status === 'active' ? 'success' : 'danger'}>
-          {u.status}
-        </StatusBadge>
-      ),
+      label: 'Status & Access',
+      render: (u) => {
+        const isActive = u.status === 'active'
+        const isSelf = currentUser?.id === u.id
+        const isToggling = togglingUserId === u.id
+
+        return (
+          <div className="grid min-w-[210px] gap-2">
+            <div className="flex items-center gap-2">
+              <StatusBadge tone={isActive ? 'success' : 'danger'}>
+                {isActive ? 'active' : 'inactive'}
+              </StatusBadge>
+              {isSelf && (
+                <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                  Akun Anda
+                </span>
+              )}
+            </div>
+
+            <button
+              aria-checked={isActive}
+              aria-label={isActive ? `Nonaktifkan ${u.name}` : `Aktifkan ${u.name}`}
+              className={`group inline-flex w-fit items-center gap-3 rounded-full border px-2 py-1.5 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-55 ${
+                isActive
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                  : 'border-rose-200 bg-rose-50 text-rose-800'
+              }`}
+              disabled={isSelf || isToggling}
+              onClick={() => setPendingStatusUser(u)}
+              role="switch"
+              title={isSelf ? 'Admin tidak boleh menonaktifkan akun sendiri.' : undefined}
+              type="button"
+            >
+              <span
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
+                  isActive ? 'bg-emerald-500' : 'bg-rose-400'
+                }`}
+              >
+                <span
+                  className={`h-5 w-5 rounded-full bg-white shadow-sm transition ${
+                    isActive ? 'translate-x-5' : 'translate-x-1'
+                  }`}
+                />
+              </span>
+              <span>
+                {isToggling
+                  ? 'Memproses...'
+                  : isActive
+                    ? 'Akun aktif'
+                    : 'Akun nonaktif'}
+              </span>
+            </button>
+          </div>
+        )
+      },
     },
     {
       key: 'actions',
@@ -202,18 +260,6 @@ export function UserManagementPage({ onError, onSuccess }) {
             type="button"
           >
             <Edit2 size={15} />
-          </button>
-          <button
-            aria-label={u.status === 'active' ? 'Deactivate user' : 'Activate user'}
-            className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl border shadow-sm transition ${
-              u.status === 'active'
-                ? 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
-                : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-            }`}
-            onClick={() => handleToggleStatus(u)}
-            type="button"
-          >
-            {u.status === 'active' ? <UserX size={15} /> : <UserCheck size={15} />}
           </button>
         </div>
       ),
@@ -257,6 +303,88 @@ export function UserManagementPage({ onError, onSuccess }) {
         rows={filteredUsers}
         search={search}
       />
+
+      {pendingStatusUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-md">
+          <div className="relative w-full max-w-lg overflow-hidden rounded-[2rem] border border-white/70 bg-white p-6 shadow-2xl shadow-slate-950/30 animate-in zoom-in-95 duration-150">
+            <div
+              className={`pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full blur-3xl ${
+                pendingStatusUser.status === 'active' ? 'bg-rose-300/30' : 'bg-emerald-300/30'
+              }`}
+            />
+            <div className="relative flex items-start gap-4">
+              <div
+                className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${
+                  pendingStatusUser.status === 'active'
+                    ? 'bg-rose-50 text-rose-700'
+                    : 'bg-emerald-50 text-emerald-700'
+                }`}
+              >
+                {pendingStatusUser.status === 'active' ? (
+                  <AlertTriangle size={22} />
+                ) : (
+                  <ShieldCheck size={22} />
+                )}
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-400">
+                  Konfirmasi Status Akun
+                </p>
+                <h3 className="mt-2 text-xl font-black tracking-tight text-slate-950">
+                  {pendingStatusUser.status === 'active'
+                    ? 'Nonaktifkan akun ini?'
+                    : 'Aktifkan kembali akun ini?'}
+                </h3>
+                <p className="mt-2 text-sm leading-relaxed text-slate-500">
+                  {pendingStatusUser.status === 'active'
+                    ? 'User tidak akan bisa login sampai admin mengaktifkan akunnya kembali.'
+                    : 'User akan bisa login kembali menggunakan akun dan kredensial yang masih berlaku.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="relative mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Target akun</p>
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="font-bold text-slate-950">{pendingStatusUser.name}</p>
+                  <p className="text-xs font-medium text-slate-500">{pendingStatusUser.email}</p>
+                </div>
+                <StatusBadge tone={pendingStatusUser.status === 'active' ? 'success' : 'danger'}>
+                  {pendingStatusUser.status === 'active' ? 'active' : 'inactive'}
+                </StatusBadge>
+              </div>
+            </div>
+
+            <div className="relative mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                disabled={togglingUserId === pendingStatusUser.id}
+                onClick={() => setPendingStatusUser(null)}
+                type="button"
+              >
+                Batal
+              </button>
+              <button
+                className={`rounded-2xl px-5 py-3 text-sm font-bold text-white shadow-sm transition disabled:opacity-60 ${
+                  pendingStatusUser.status === 'active'
+                    ? 'bg-rose-600 hover:bg-rose-700'
+                    : 'bg-emerald-600 hover:bg-emerald-700'
+                }`}
+                disabled={togglingUserId === pendingStatusUser.id}
+                onClick={() => handleToggleStatus(pendingStatusUser)}
+                type="button"
+              >
+                {togglingUserId === pendingStatusUser.id
+                  ? 'Memproses...'
+                  : pendingStatusUser.status === 'active'
+                    ? 'Ya, Nonaktifkan'
+                    : 'Ya, Aktifkan'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ADD USER MODAL */}
       {showAddModal && (

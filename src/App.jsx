@@ -213,6 +213,7 @@ function App() {
       case "users":
         return isAdmin ? (
           <UserManagementPage
+            currentUser={user}
             onError={showError}
             onSuccess={(message) => setNotice({ type: "success", message })}
           />
