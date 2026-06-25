@@ -120,6 +120,21 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   logout: () => request('/logout', { method: 'POST' }),
+  setupPin: (payload) =>
+    request('/pin/setup', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  verifyPin: (payload) =>
+    request('/pin/verify', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  changePin: (payload) =>
+    request('/pin/change', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
   users: () => request('/users'),
   documents: (params) => request(`/documents${toQuery(params)}`),
   uploadDocument: (file) => {
@@ -200,6 +215,16 @@ export const api = {
   toggleUserStatus: (id) =>
     request(`/admin/users/${id}/toggle-status`, {
       method: 'PUT',
+    }),
+  resetAdminUserPassword: (id, payload) =>
+    request(`/admin/users/${id}/reset-password`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  resetAdminUserPin: (id, payload) =>
+    request(`/admin/users/${id}/reset-pin`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
     }),
   roles: () => request('/roles'),
 }
