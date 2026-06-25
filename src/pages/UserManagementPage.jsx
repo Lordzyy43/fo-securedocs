@@ -8,6 +8,8 @@ export function UserManagementPage({ currentUser, onError, onSuccess }) {
   const [users, setUsers] = useState([])
   const [roles, setRoles] = useState([])
   const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [roleFilter, setRoleFilter] = useState('all')
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [togglingUserId, setTogglingUserId] = useState(null)
@@ -41,6 +43,7 @@ export function UserManagementPage({ currentUser, onError, onSuccess }) {
   const [resetPasswordForm, setResetPasswordForm] = useState({
     password: '',
     password_confirmation: '',
+    admin_pin: '',
   })
   const [resetPinForm, setResetPinForm] = useState({
     admin_pin: '',
@@ -97,11 +100,13 @@ export function UserManagementPage({ currentUser, onError, onSuccess }) {
     const keyword = search.toLowerCase()
     return users.filter(
       (u) =>
-        u.name?.toLowerCase().includes(keyword) ||
-        u.email?.toLowerCase().includes(keyword) ||
-        u.role?.name?.toLowerCase().includes(keyword)
+        (statusFilter === 'all' || u.status === statusFilter) &&
+        (roleFilter === 'all' || u.role?.name === roleFilter) &&
+        (u.name?.toLowerCase().includes(keyword) ||
+          u.email?.toLowerCase().includes(keyword) ||
+          u.role?.name?.toLowerCase().includes(keyword))
     )
-  }, [users, search])
+  }, [users, search, statusFilter, roleFilter])
 
   async function handleAddUser(event) {
     event.preventDefault()
@@ -191,6 +196,7 @@ export function UserManagementPage({ currentUser, onError, onSuccess }) {
       setResetPasswordForm({
         password: '',
         password_confirmation: '',
+        admin_pin: '',
       })
       onSuccess(response.message)
       await refreshData()
@@ -350,6 +356,7 @@ export function UserManagementPage({ currentUser, onError, onSuccess }) {
               setResetPasswordForm({
                 password: '',
                 password_confirmation: '',
+                admin_pin: '',
               })
               setPendingPasswordResetUser(u)
             }}
@@ -405,6 +412,51 @@ export function UserManagementPage({ currentUser, onError, onSuccess }) {
           <Plus size={16} />
           <span>Add New User</span>
         </button>
+      </section>
+
+      <section className="grid gap-3 rounded-[2rem] border border-slate-200 bg-white p-5 shadow-soft sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto]">
+        <label className="grid gap-2 text-sm font-semibold text-slate-700">
+          <span>Filter Status</span>
+          <select
+            className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+            onChange={(event) => setStatusFilter(event.target.value)}
+            value={statusFilter}
+          >
+            <option value="all">Semua status</option>
+            <option value="active">Akun aktif</option>
+            <option value="inactive">Akun nonaktif</option>
+          </select>
+        </label>
+
+        <label className="grid gap-2 text-sm font-semibold text-slate-700">
+          <span>Filter Role</span>
+          <select
+            className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+            onChange={(event) => setRoleFilter(event.target.value)}
+            value={roleFilter}
+          >
+            <option value="all">Semua role</option>
+            {roles.map((role) => (
+              <option key={role.id} value={role.name}>
+                {role.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div className="flex items-end">
+          <button
+            className="w-full rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 lg:w-auto"
+            onClick={() => {
+              setStatusFilter('all')
+              setRoleFilter('all')
+              setSearch('')
+            }}
+            type="button"
+          >
+            Reset Filter
+          </button>
+        </div>
       </section>
 
       {/* Main Table */}
@@ -571,8 +623,32 @@ export function UserManagementPage({ currentUser, onError, onSuccess }) {
                 )}
               </label>
 
+              <label className="grid gap-2 text-sm font-semibold text-slate-700">
+                <span>PIN Admin</span>
+                <input
+                  className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-center font-mono text-lg tracking-[0.35em] text-slate-900 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                  inputMode="numeric"
+                  maxLength={6}
+                  onChange={(event) =>
+                    setResetPasswordForm({
+                      ...resetPasswordForm,
+                      admin_pin: sanitizePin(event.target.value),
+                    })
+                  }
+                  placeholder="000000"
+                  required
+                  type="password"
+                  value={resetPasswordForm.admin_pin}
+                />
+                {resetPasswordErrors.admin_pin?.[0] && (
+                  <p className="text-xs font-semibold text-red-600">
+                    {resetPasswordErrors.admin_pin[0]}
+                  </p>
+                )}
+              </label>
+
               <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4 text-xs leading-relaxed text-amber-800">
-                Password disimpan dengan bcrypt dan akun akan dipaksa mengganti password setelah login.
+                Password disimpan dengan bcrypt. PIN admin dipakai untuk mengonfirmasi aksi sensitif ini.
               </div>
 
               <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
@@ -585,6 +661,7 @@ export function UserManagementPage({ currentUser, onError, onSuccess }) {
                     setResetPasswordForm({
                       password: '',
                       password_confirmation: '',
+                      admin_pin: '',
                     })
                   }}
                   type="button"

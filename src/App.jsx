@@ -19,6 +19,7 @@ function App() {
   const [view, setView] = useState(INITIAL_VIEW);
   const [booting, setBooting] = useState(true);
   const [notice, setNotice] = useState(null);
+  const [loginNotice, setLoginNotice] = useState(null);
 
   const isAdmin = user?.role?.name === "admin";
   const mustChangePassword = Boolean(user?.force_password_change);
@@ -52,6 +53,10 @@ function App() {
       if (error.status === 401) {
         setUser(null);
         setView(INITIAL_VIEW);
+        setLoginNotice({
+          type: "error",
+          message: "Sesi Anda sudah berakhir. Silakan login ulang untuk melanjutkan.",
+        });
         return;
       }
     } else if (error instanceof Error) {
@@ -108,6 +113,7 @@ function App() {
   async function handleLogin(credentials) {
     try {
       setNotice(null);
+      setLoginNotice(null);
       const response = await api.login(credentials);
       if (response.user.force_password_change) {
         setPendingPasswordChangeUser(response.user);
@@ -161,6 +167,7 @@ function App() {
       setPendingPinUser(null);
       setView(INITIAL_VIEW);
       setNotice(null);
+      setLoginNotice(null);
     }
   }
 
@@ -276,6 +283,7 @@ function App() {
       <LoginPage
         pendingPasswordChangeUser={pendingPasswordChangeUser}
         pendingPinUser={pendingPinUser}
+        loginNotice={loginNotice}
         onLogin={handleLogin}
         onLogout={handleLogout}
         onPasswordChanged={handlePasswordChanged}

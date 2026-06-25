@@ -86,6 +86,7 @@ function PinBoxes({ value, tone = "emerald" }) {
 export function LoginPage({
   pendingPasswordChangeUser = null,
   pendingPinUser = null,
+  loginNotice = null,
   onLogin,
   onLogout,
   onPasswordChanged,
@@ -108,6 +109,8 @@ export function LoginPage({
 
   const [showPassword, setShowPassword] = useState(false);
   const [showForgotPasswordInfo, setShowForgotPasswordInfo] = useState(false);
+  const [loginLockoutUntil, setLoginLockoutUntil] = useState(null);
+  const [lockoutRemaining, setLockoutRemaining] = useState(0);
   const [bannerError, setBannerError] = useState("");
   const [bannerSuccess, setBannerSuccess] = useState("");
   const [passwordChangeUser, setPasswordChangeUser] = useState(pendingPasswordChangeUser);
@@ -142,6 +145,43 @@ export function LoginPage({
     setPinChallengeUser(pendingPinUser);
   }, [pendingPinUser]);
 
+  useEffect(() => {
+    if (!loginNotice) return;
+    if (loginNotice.type === "success") {
+      setBannerSuccess(loginNotice.message);
+      setBannerError("");
+      return;
+    }
+
+    setBannerError(loginNotice.message);
+    setBannerSuccess("");
+  }, [loginNotice]);
+
+  useEffect(() => {
+    if (!loginLockoutUntil) {
+      setLockoutRemaining(0);
+      return undefined;
+    }
+
+    function updateRemaining() {
+      const seconds = Math.max(0, Math.ceil((loginLockoutUntil - Date.now()) / 1000));
+      setLockoutRemaining(seconds);
+      if (seconds === 0) {
+        setLoginLockoutUntil(null);
+      }
+    }
+
+    updateRemaining();
+    const timer = window.setInterval(updateRemaining, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [loginLockoutUntil]);
+
+  function retryAfterSeconds(error) {
+    const match = error.message.match(/(\d+)\s*detik/i);
+    return match ? Number(match[1]) : 60;
+  }
+
   async function submit(values) {
     setBannerError("");
     setBannerSuccess("");
@@ -174,6 +214,11 @@ export function LoginPage({
             message: messages?.[0] ?? err.message,
           });
         });
+
+        if (err.status === 429) {
+          const seconds = retryAfterSeconds(err);
+          setLoginLockoutUntil(Date.now() + seconds * 1000);
+        }
       }
 
       setBannerError(
@@ -438,7 +483,7 @@ export function LoginPage({
                       <input
                         id="email"
                         type="email"
-                        disabled={isSubmitting}
+                        disabled={isSubmitting || lockoutRemaining > 0}
                         {...register("email")}
                         className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50/50 pl-3 pr-10 text-xs font-medium text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-100 disabled:opacity-50"
                         placeholder="username@company.com"
@@ -474,7 +519,7 @@ export function LoginPage({
                     <div className="relative group">
                       <input
                         id="password"
-                        disabled={isSubmitting}
+                        disabled={isSubmitting || lockoutRemaining > 0}
                         type={showPassword ? "text" : "password"}
                         {...register("password")}
                         className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50/50 pl-3 pr-10 text-xs font-medium text-slate-900 outline-none transition-all placeholder:text-slate-300 focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-100 disabled:opacity-50 tracking-wide"
@@ -484,7 +529,7 @@ export function LoginPage({
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        disabled={isSubmitting}
+                        disabled={isSubmitting || lockoutRemaining > 0}
                         className="absolute right-0 top-0 bottom-0 px-3 flex items-center justify-center text-slate-400 hover:text-slate-700 border-l border-slate-200 my-2 h-6 transition-colors"
                         title={
                           showPassword ? "Sembunyikan sandi" : "Tampilkan sandi"
@@ -507,7 +552,7 @@ export function LoginPage({
                   {/* Submit Button */}
                   <Button
                     type="submit"
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || lockoutRemaining > 0}
                     className="h-10 w-full rounded-lg bg-slate-950 font-bold text-xs text-white uppercase tracking-wider transition-all hover:bg-slate-800 active:scale-[0.99] disabled:opacity-40 shadow-sm mt-2"
                   >
                     {isSubmitting ? (
@@ -515,6 +560,8 @@ export function LoginPage({
                         <div className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
                         Authenticating...
                       </span>
+                    ) : lockoutRemaining > 0 ? (
+                      `Tunggu ${lockoutRemaining} detik`
                     ) : (
                       "Sign In To Workspace"
                     )}
