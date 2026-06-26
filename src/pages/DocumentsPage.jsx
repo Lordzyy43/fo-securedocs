@@ -27,7 +27,9 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
   const [previewUrl, setPreviewUrl] = useState(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [editingDocument, setEditingDocument] = useState(null)
+  const [documentToDelete, setDocumentToDelete] = useState(null)
   const [editName, setEditName] = useState('')
+  const [deleting, setDeleting] = useState(false)
 
   // Fetch function for event handlers (upload, delete, etc.)
   async function refreshData() {
@@ -95,16 +97,19 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
     }
   }
 
-  async function deleteDocument(id) {
-    const confirmed = window.confirm('Hapus dokumen ini?')
-    if (!confirmed) return
+  async function deleteDocument() {
+    if (!documentToDelete) return
 
+    setDeleting(true)
     try {
-      await api.deleteDocument(id)
-      onSuccess('Dokumen berhasil dihapus.')
+      await api.deleteDocument(documentToDelete.id)
+      setDocumentToDelete(null)
       await refreshData()
+      onSuccess('Dokumen berhasil dihapus.')
     } catch (error) {
       onError(error)
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -252,7 +257,7 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
                 <button
                   aria-label="Delete document"
                   className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-rose-200 bg-rose-50 text-rose-700 shadow-sm transition hover:bg-rose-100"
-                  onClick={() => deleteDocument(document.id)}
+                  onClick={() => setDocumentToDelete(document)}
                   type="button"
                 >
                   <Trash2 size={16} />
@@ -449,6 +454,59 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {documentToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-[2rem] border border-slate-200 bg-white p-6 shadow-2xl animate-in zoom-in-95 duration-150">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-widest text-rose-600">Document removal</p>
+                <h3 className="text-lg font-bold text-slate-950">Hapus Dokumen</h3>
+              </div>
+              <button
+                aria-label="Close delete confirmation"
+                className="rounded-lg p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={deleting}
+                onClick={() => setDocumentToDelete(null)}
+                type="button"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="grid gap-4">
+              <p className="text-sm font-medium text-slate-600">
+                Apakah Anda yakin ingin menghapus dokumen ini?
+              </p>
+              <div className="rounded-2xl border border-rose-100 bg-rose-50 p-4">
+                <p className="text-xs font-bold uppercase tracking-widest text-rose-500">File</p>
+                <p className="mt-1 break-words text-sm font-bold text-rose-950">
+                  {documentToDelete.original_name ?? 'Unknown document'}
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={deleting}
+                  onClick={() => setDocumentToDelete(null)}
+                  type="button"
+                >
+                  Batal
+                </button>
+                <button
+                  className="rounded-2xl bg-rose-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={deleting}
+                  onClick={deleteDocument}
+                  type="button"
+                >
+                  {deleting ? 'Menghapus...' : 'Hapus'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
