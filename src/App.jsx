@@ -204,7 +204,14 @@ function App() {
         );
       case "incoming":
       case "sent":
-        return <SharesPage mode={activeView} user={user} onError={showError} />;
+        return (
+          <SharesPage
+            mode={activeView}
+            user={user}
+            onError={showError}
+            onSuccess={(message) => setNotice({ type: "success", message })}
+          />
+        );
       case "profile":
         return (
           <ProfilePage
