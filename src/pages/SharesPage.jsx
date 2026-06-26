@@ -1,12 +1,12 @@
 import { Download, Trash2, Eye, X, PencilLine } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DataTable } from '../components/DataTable.jsx'
 import { StatusBadge } from '../components/StatusBadge.jsx'
 import { api } from '../services/api.js'
 import { createPreviewBlob, inferPreviewMimeType, isPreviewableMimeType } from '../utils/filePreview.js'
 import { formatDate, getPageData } from '../utils/format.js'
 
-export function SharesPage({ mode, onError, onSharesChanged, onSuccess, user }) {
+export function SharesPage({ mode, onError, onSharesChanged, onSuccess, refreshToken, user }) {
   const [shares, setShares] = useState([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
@@ -15,6 +15,9 @@ export function SharesPage({ mode, onError, onSharesChanged, onSuccess, user }) 
   const [shareToEdit, setShareToEdit] = useState(null)
   const [editShareForm, setEditShareForm] = useState({ permission: 'view', message: '' })
   const [savingPermission, setSavingPermission] = useState(false)
+  const fetchInFlightRef = useRef(false)
+  const hasLoadedRef = useRef(false)
+  const mountedRef = useRef(false)
 
   // Preview States
   const [previewFile, setPreviewFile] = useState(null)
@@ -46,33 +49,32 @@ export function SharesPage({ mode, onError, onSharesChanged, onSuccess, user }) 
     return mode === 'incoming' ? data.map(normalizeSharedDocument) : data
   }, [mode, normalizeSharedDocument])
 
-  async function loadShares() {
-    setLoading(true)
+  const loadShares = useCallback(async ({ showLoading = false } = {}) => {
+    if (fetchInFlightRef.current) return
+
+    fetchInFlightRef.current = true
+    if (showLoading) setLoading(true)
+
     try {
-      setShares(await fetchShares())
+      const data = await fetchShares()
+      if (mountedRef.current) setShares(data)
     } catch (error) {
-      onError(error)
+      if (mountedRef.current) onError(error)
     } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    let active = true
-
-    fetchShares()
-      .then((data) => {
-        if (active) setShares(data)
-      })
-      .catch(onError)
-      .finally(() => {
-        if (active) setLoading(false)
-      })
-
-    return () => {
-      active = false
+      fetchInFlightRef.current = false
+      hasLoadedRef.current = true
+      if (mountedRef.current && showLoading) setLoading(false)
     }
   }, [fetchShares, onError])
+
+  useEffect(() => {
+    mountedRef.current = true
+    loadShares({ showLoading: !hasLoadedRef.current })
+
+    return () => {
+      mountedRef.current = false
+    }
+  }, [loadShares, refreshToken])
 
   const filteredShares = useMemo(() => {
     const keyword = search.toLowerCase()
@@ -151,7 +153,6 @@ export function SharesPage({ mode, onError, onSharesChanged, onSuccess, user }) 
 
   function closeShareDetail() {
     setSelectedShare(null)
-    onSharesChanged()
   }
 
   async function previewSelectedShare() {
@@ -210,10 +211,7 @@ export function SharesPage({ mode, onError, onSharesChanged, onSuccess, user }) 
               <button
                 aria-label="Preview document"
                 className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50"
-                onClick={() => {
-                  setSelectedShare(share)
-                  onSharesChanged()
-                }}
+                onClick={() => setSelectedShare(share)}
                 type="button"
               >
                 <Eye size={16} />

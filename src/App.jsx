@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { AppLayout } from "./components/AppLayout.jsx";
 import { LoginPage } from "./pages/LoginPage.jsx";
 import { DashboardPage } from "./pages/DashboardPage.jsx";
@@ -22,6 +22,8 @@ function App() {
   const [notice, setNotice] = useState(null);
   const [loginNotice, setLoginNotice] = useState(null);
   const [incomingUnreadCount, setIncomingUnreadCount] = useState(0);
+  const [sharesRefreshToken, setSharesRefreshToken] = useState(0);
+  const unreadFetchInFlightRef = useRef(false);
 
   const isAdmin = user?.role?.name === "admin";
   const mustChangePassword = Boolean(user?.force_password_change);
@@ -73,6 +75,10 @@ function App() {
       return;
     }
 
+    if (unreadFetchInFlightRef.current) return;
+
+    unreadFetchInFlightRef.current = true;
+
     try {
       const response = await api.shares();
       const shares = getPageData(response);
@@ -81,27 +87,34 @@ function App() {
       );
     } catch (error) {
       showError(error);
+    } finally {
+      unreadFetchInFlightRef.current = false;
     }
   }, [isAdmin, showError, user]);
+
+  const refreshShareData = useCallback(() => {
+    refreshIncomingUnreadCount();
+    setSharesRefreshToken((token) => token + 1);
+  }, [refreshIncomingUnreadCount]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
       refreshIncomingUnreadCount();
     });
 
-    if (!user || isAdmin) {
+    if (!user || isAdmin || !["incoming", "sent"].includes(activeView)) {
       return () => {
         window.cancelAnimationFrame(frame);
       };
     }
 
-    const interval = window.setInterval(refreshIncomingUnreadCount, 30000);
+    const interval = window.setInterval(refreshShareData, 5000);
 
     return () => {
       window.cancelAnimationFrame(frame);
       window.clearInterval(interval);
     };
-  }, [activeView, isAdmin, refreshIncomingUnreadCount, user]);
+  }, [activeView, isAdmin, refreshIncomingUnreadCount, refreshShareData, user]);
 
   // Fungsi untuk mengecek sesi user saat pertama kali aplikasi dimuat
   useEffect(() => {
@@ -248,7 +261,8 @@ function App() {
             user={user}
             onError={showError}
             onSuccess={(message) => setNotice({ type: "success", message })}
-            onSharesChanged={refreshIncomingUnreadCount}
+            onSharesChanged={refreshShareData}
+            refreshToken={sharesRefreshToken}
           />
         );
       case "profile":
