@@ -15,6 +15,7 @@ export function SharesPage({ mode, onError, user }) {
   const [previewFile, setPreviewFile] = useState(null)
   const [previewUrl, setPreviewUrl] = useState(null)
   const [previewLoading, setPreviewLoading] = useState(false)
+  const [selectedShare, setSelectedShare] = useState(null)
 
   const normalizeSharedDocument = useCallback((document) => {
     const share = document.shares?.[0] ?? {}
@@ -108,6 +109,18 @@ export function SharesPage({ mode, onError, user }) {
     setPreviewFile(null)
   }
 
+  function closeShareDetail() {
+    setSelectedShare(null)
+  }
+
+  function previewSelectedShare() {
+    if (!selectedShare?.document) return
+
+    const document = selectedShare.document
+    closeShareDetail()
+    handlePreview(document)
+  }
+
   const columns = [
     {
       key: 'document',
@@ -151,7 +164,7 @@ export function SharesPage({ mode, onError, user }) {
               <button
                 aria-label="Preview document"
                 className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50"
-                onClick={() => handlePreview(share.document)}
+                onClick={() => setSelectedShare(share)}
                 type="button"
               >
                 <Eye size={16} />
@@ -208,6 +221,90 @@ export function SharesPage({ mode, onError, user }) {
         rows={filteredShares}
         search={search}
       />
+
+      {mode === 'incoming' && selectedShare ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-lg rounded-[2rem] border border-slate-200 bg-white p-6 shadow-2xl animate-in zoom-in-95 duration-150">
+            <div className="mb-5 flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
+              <div>
+                <p className="text-xs uppercase tracking-widest text-cyan-600">Incoming share</p>
+                <h3 className="text-lg font-bold text-slate-950">Share Document Detail</h3>
+              </div>
+              <button
+                aria-label="Close share detail"
+                className="rounded-lg p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                onClick={closeShareDetail}
+                type="button"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="grid gap-3 text-sm">
+              <div className="grid gap-1 rounded-2xl bg-slate-50 p-4">
+                <span className="text-xs font-bold uppercase tracking-widest text-slate-400">Nama dokumen</span>
+                <strong className="text-slate-950">{selectedShare.document?.original_name ?? 'Unknown document'}</strong>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-1 rounded-2xl bg-slate-50 p-4">
+                  <span className="text-xs font-bold uppercase tracking-widest text-slate-400">Shared by</span>
+                  <span className="font-semibold text-slate-800">{selectedShare.sender?.email ?? '-'}</span>
+                </div>
+                <div className="grid gap-1 rounded-2xl bg-slate-50 p-4">
+                  <span className="text-xs font-bold uppercase tracking-widest text-slate-400">Permission</span>
+                  <span>
+                    <StatusBadge tone={selectedShare.permission === 'download' ? 'success' : 'neutral'}>
+                      {selectedShare.permission ?? '-'}
+                    </StatusBadge>
+                  </span>
+                </div>
+                <div className="grid gap-1 rounded-2xl bg-slate-50 p-4">
+                  <span className="text-xs font-bold uppercase tracking-widest text-slate-400">Status</span>
+                  <span>
+                    <StatusBadge tone="info">{selectedShare.status ?? '-'}</StatusBadge>
+                  </span>
+                </div>
+                <div className="grid gap-1 rounded-2xl bg-slate-50 p-4">
+                  <span className="text-xs font-bold uppercase tracking-widest text-slate-400">Shared date</span>
+                  <span className="font-semibold text-slate-800">{formatDate(selectedShare.created_at)}</span>
+                </div>
+              </div>
+              <div className="grid gap-1 rounded-2xl bg-slate-50 p-4">
+                <span className="text-xs font-bold uppercase tracking-widest text-slate-400">Message</span>
+                <p className="whitespace-pre-wrap text-slate-700">{selectedShare.message?.trim() || '-'}</p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                onClick={closeShareDetail}
+                type="button"
+              >
+                Close
+              </button>
+              {selectedShare.permission === 'download' ? (
+                <button
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                  onClick={() => api.downloadDocument(selectedShare.document).catch(onError)}
+                  type="button"
+                >
+                  <Download size={16} />
+                  Download
+                </button>
+              ) : null}
+              <button
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+                onClick={previewSelectedShare}
+                type="button"
+              >
+                <Eye size={16} />
+                Preview File
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* PREVIEW MODAL */}
       {previewFile && previewUrl && (
