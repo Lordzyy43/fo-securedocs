@@ -181,11 +181,15 @@ export function SharesPage({ mode, onError, onSuccess, user }) {
         </StatusBadge>
       ),
     },
-    {
-      key: 'status',
-      label: 'Status',
-      render: (share) => <StatusBadge tone="info">{share.status}</StatusBadge>,
-    },
+    ...(mode === 'sent'
+      ? [
+          {
+            key: 'status',
+            label: 'Status',
+            render: (share) => <StatusBadge tone="info">{share.status}</StatusBadge>,
+          },
+        ]
+      : []),
     {
       key: 'created_at',
       label: 'Shared',
@@ -320,6 +324,20 @@ export function SharesPage({ mode, onError, onSuccess, user }) {
               <div className="grid gap-1 rounded-2xl bg-slate-50 p-4">
                 <span className="text-xs font-bold uppercase tracking-widest text-slate-400">Message</span>
                 <p className="whitespace-pre-wrap text-slate-700">{selectedShare.message?.trim() || '-'}</p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-1 rounded-2xl bg-slate-50 p-4">
+                  <span className="text-xs font-bold uppercase tracking-widest text-slate-400">Read At</span>
+                  <span className="font-semibold text-slate-800">
+                    {selectedShare.read_at ? formatDate(selectedShare.read_at) : 'Belum dibaca'}
+                  </span>
+                </div>
+                <div className="grid gap-1 rounded-2xl bg-slate-50 p-4">
+                  <span className="text-xs font-bold uppercase tracking-widest text-slate-400">Downloaded At</span>
+                  <span className="font-semibold text-slate-800">
+                    {selectedShare.downloaded_at ? formatDate(selectedShare.downloaded_at) : 'Belum diunduh'}
+                  </span>
+                </div>
               </div>
             </div>
 
