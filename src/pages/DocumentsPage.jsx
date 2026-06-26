@@ -1,5 +1,5 @@
 import { Download, Send, Trash2, Upload, Eye, X, PencilLine } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { DataTable } from '../components/DataTable.jsx'
 import { StatusBadge } from '../components/StatusBadge.jsx'
 import { api } from '../services/api.js'
@@ -11,6 +11,7 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
   const [users, setUsers] = useState([])
   const [search, setSearch] = useState('')
   const [selectedFile, setSelectedFile] = useState(null)
+  const fileInputRef = useRef(null)
   const [shareForm, setShareForm] = useState({
     document_id: '',
     receiver_id: '',
@@ -80,6 +81,9 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
     try {
       await api.uploadDocument(selectedFile)
       setSelectedFile(null)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
       onSuccess('Dokumen berhasil diupload dan dienkripsi.')
       await refreshData()
     } catch (error) {
@@ -289,6 +293,7 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
                   accept=".pdf,.docx,.xlsx,.jpg,.jpeg,.png"
                   className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
                   onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
+                  ref={fileInputRef}
                   required={mode === 'upload'}
                   type="file"
                 />
