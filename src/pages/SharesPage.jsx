@@ -1,5 +1,5 @@
 import { Download, Trash2, Eye, X } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { DataTable } from '../components/DataTable.jsx'
 import { StatusBadge } from '../components/StatusBadge.jsx'
 import { api } from '../services/api.js'
@@ -16,11 +16,34 @@ export function SharesPage({ mode, onError, user }) {
   const [previewUrl, setPreviewUrl] = useState(null)
   const [previewLoading, setPreviewLoading] = useState(false)
 
+  const normalizeSharedDocument = useCallback((document) => {
+    const share = document.shares?.[0] ?? {}
+
+    return {
+      ...share,
+      id: share.id ?? document.id,
+      document,
+      document_id: document.id,
+      sender: share.sender ?? document.owner,
+      sender_id: share.sender_id ?? document.owner_id,
+      receiver_id: share.receiver_id ?? user.id,
+      permission: share.permission,
+      status: share.status,
+      created_at: share.created_at ?? document.created_at,
+    }
+  }, [user.id])
+
+  const fetchShares = useCallback(async () => {
+    const response = mode === 'incoming' ? await api.sharedWithMeDocuments() : await api.shares()
+    const data = getPageData(response)
+
+    return mode === 'incoming' ? data.map(normalizeSharedDocument) : data
+  }, [mode, normalizeSharedDocument])
+
   async function loadShares() {
     setLoading(true)
     try {
-      const response = await api.shares()
-      setShares(getPageData(response))
+      setShares(await fetchShares())
     } catch (error) {
       onError(error)
     } finally {
@@ -31,10 +54,9 @@ export function SharesPage({ mode, onError, user }) {
   useEffect(() => {
     let active = true
 
-    api
-      .shares()
-      .then((response) => {
-        if (active) setShares(getPageData(response))
+    fetchShares()
+      .then((data) => {
+        if (active) setShares(data)
       })
       .catch(onError)
       .finally(() => {
@@ -44,12 +66,12 @@ export function SharesPage({ mode, onError, user }) {
     return () => {
       active = false
     }
-  }, [onError])
+  }, [fetchShares, onError])
 
   const filteredShares = useMemo(() => {
     const keyword = search.toLowerCase()
     return shares
-      .filter((share) => (mode === 'incoming' ? share.receiver_id === user.id : share.sender_id === user.id))
+      .filter((share) => (mode === 'incoming' ? true : share.sender_id === user.id))
       .filter((share) => share.document?.original_name?.toLowerCase().includes(keyword))
   }, [mode, search, shares, user.id])
 

@@ -30,7 +30,6 @@ function App() {
     () => ({
       dashboard: "Dashboard Overview",
       documents: isAdmin ? "All Documents" : "My Documents",
-      upload: "Upload Documents",
       incoming: "Incoming Shares",
       sent: "Sent Shares",
       users: "User Management",
@@ -195,7 +194,6 @@ function App() {
   function renderPage() {
     switch (activeView) {
       case "documents":
-      case "upload":
         return (
           <DocumentsPage
             mode={activeView}

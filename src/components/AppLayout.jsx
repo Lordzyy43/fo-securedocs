@@ -1,7 +1,6 @@
 import {
   LayoutDashboard, // Menggantikan BarChart3 untuk Dashboard yang lebih umum
   FolderLock, // Menggantikan FileText untuk My Documents (kesan terenkripsi)
-  FileUp, // Menggantikan Upload untuk Upload Documents
   Inbox,
   FileSpreadsheet, // Menggantikan Send untuk Sent (representasi file terkirim)
   ShieldCheck,
@@ -18,7 +17,6 @@ import { useState } from "react";
 const baseItems = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "documents", label: "My Documents", icon: FolderLock },
-  { id: "upload", label: "Upload Documents", icon: FileUp },
   { id: "incoming", label: "Incoming Shares", icon: Inbox },
   { id: "sent", label: "Sent Shares", icon: FileSpreadsheet },
   { id: "profile", label: "Profile & Security", icon: User },

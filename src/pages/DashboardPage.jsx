@@ -53,7 +53,7 @@ export function DashboardPage({ isAdmin, onError, onNavigate, user }) {
       <section className="grid gap-4 md:grid-cols-2">
         <button
           className="rounded-[2rem] border border-slate-200 bg-white p-6 text-left shadow-soft transition hover:border-cyan-300 hover:ring-1 hover:ring-cyan-100"
-          onClick={() => onNavigate('upload')}
+          onClick={() => onNavigate('documents')}
           type="button"
         >
           <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-100 text-cyan-700">
