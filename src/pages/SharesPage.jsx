@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { DataTable } from '../components/DataTable.jsx'
 import { StatusBadge } from '../components/StatusBadge.jsx'
 import { api } from '../services/api.js'
-import { inferPreviewMimeType, isPreviewableMimeType } from '../utils/filePreview.js'
+import { createPreviewBlob, inferPreviewMimeType, isPreviewableMimeType } from '../utils/filePreview.js'
 import { formatDate, getPageData } from '../utils/format.js'
 
 export function SharesPage({ mode, onError, user }) {
@@ -88,11 +88,15 @@ export function SharesPage({ mode, onError, user }) {
     }
   }
 
-  function handlePreview(doc) {
+  async function handlePreview(doc) {
     setPreviewLoading(true)
     try {
       const mimeType = inferPreviewMimeType(doc)
-      setPreviewUrl(api.previewDocumentUrl(doc))
+      const previewUrl = mimeType === 'application/pdf'
+        ? URL.createObjectURL(createPreviewBlob(await api.previewDocument(doc), mimeType))
+        : api.previewDocumentUrl(doc)
+
+      setPreviewUrl(previewUrl)
       setPreviewFile({ ...doc, mime_type: mimeType })
     } catch (error) {
       onError(error)
