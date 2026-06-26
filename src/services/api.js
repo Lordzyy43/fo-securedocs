@@ -190,6 +190,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  updateShare: (id, payload) =>
+    request(`/document-shares/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
   deleteShare: (id) => request(`/document-shares/${id}`, { method: 'DELETE' }),
   auditLogs: (params) => request(`/audit-logs${toQuery(params)}`),
   updateProfile: (payload) =>

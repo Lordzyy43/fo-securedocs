@@ -1,4 +1,4 @@
-import { Download, Trash2, Eye, X } from 'lucide-react'
+import { Download, Trash2, Eye, X, PencilLine } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { DataTable } from '../components/DataTable.jsx'
 import { StatusBadge } from '../components/StatusBadge.jsx'
@@ -12,6 +12,9 @@ export function SharesPage({ mode, onError, onSuccess, user }) {
   const [loading, setLoading] = useState(true)
   const [shareToRevoke, setShareToRevoke] = useState(null)
   const [revoking, setRevoking] = useState(false)
+  const [shareToEdit, setShareToEdit] = useState(null)
+  const [editShareForm, setEditShareForm] = useState({ permission: 'view', message: '' })
+  const [savingPermission, setSavingPermission] = useState(false)
 
   // Preview States
   const [previewFile, setPreviewFile] = useState(null)
@@ -91,6 +94,31 @@ export function SharesPage({ mode, onError, onSuccess, user }) {
       onError(error)
     } finally {
       setRevoking(false)
+    }
+  }
+
+  function openEditShare(share) {
+    setShareToEdit(share)
+    setEditShareForm({
+      permission: share.permission ?? 'view',
+      message: share.message ?? '',
+    })
+  }
+
+  async function updateSharePermission(event) {
+    event.preventDefault()
+    if (!shareToEdit) return
+
+    setSavingPermission(true)
+    try {
+      await api.updateShare(shareToEdit.id, editShareForm)
+      setShareToEdit(null)
+      await loadShares()
+      onSuccess('Permission share berhasil diperbarui.')
+    } catch (error) {
+      onError(error)
+    } finally {
+      setSavingPermission(false)
     }
   }
 
@@ -194,14 +222,24 @@ export function SharesPage({ mode, onError, onSuccess, user }) {
             </>
           ) : null}
           {mode === 'sent' ? (
-            <button
-              aria-label="Revoke share"
-              className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-rose-200 bg-rose-50 text-rose-700 shadow-sm transition hover:bg-rose-100"
-              onClick={() => setShareToRevoke(share)}
-              type="button"
-            >
-              <Trash2 size={16} />
-            </button>
+            <>
+              <button
+                aria-label="Edit share permission"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50"
+                onClick={() => openEditShare(share)}
+                type="button"
+              >
+                <PencilLine size={16} />
+              </button>
+              <button
+                aria-label="Revoke share"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-rose-200 bg-rose-50 text-rose-700 shadow-sm transition hover:bg-rose-100"
+                onClick={() => setShareToRevoke(share)}
+                type="button"
+              >
+                <Trash2 size={16} />
+              </button>
+            </>
           ) : null}
         </div>
       ),
@@ -312,6 +350,86 @@ export function SharesPage({ mode, onError, onSuccess, user }) {
                 Preview File
               </button>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {mode === 'sent' && shareToEdit ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-lg rounded-[2rem] border border-slate-200 bg-white p-6 shadow-2xl animate-in zoom-in-95 duration-150">
+            <div className="mb-5 flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
+              <div>
+                <p className="text-xs uppercase tracking-widest text-cyan-600">Shared access</p>
+                <h3 className="text-lg font-bold text-slate-950">Ubah Permission Share</h3>
+              </div>
+              <button
+                aria-label="Close edit share permission"
+                className="rounded-lg p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={savingPermission}
+                onClick={() => setShareToEdit(null)}
+                type="button"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form className="grid gap-5" onSubmit={updateSharePermission}>
+              <div className="grid gap-3 rounded-2xl bg-slate-50 p-4 text-sm">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Dokumen</p>
+                  <p className="mt-1 break-words font-bold text-slate-950">
+                    {shareToEdit.document?.original_name ?? 'Unknown document'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Penerima</p>
+                  <p className="mt-1 font-bold text-slate-950">{shareToEdit.receiver?.name ?? '-'}</p>
+                  <p className="text-slate-500">{shareToEdit.receiver?.email ?? '-'}</p>
+                </div>
+              </div>
+
+              <label className="grid gap-3 text-sm font-semibold text-slate-700">
+                <span>Permission</span>
+                <select
+                  className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
+                  disabled={savingPermission}
+                  onChange={(event) => setEditShareForm({ ...editShareForm, permission: event.target.value })}
+                  value={editShareForm.permission}
+                >
+                  <option value="view">View</option>
+                  <option value="download">Download</option>
+                </select>
+              </label>
+
+              <label className="grid gap-3 text-sm font-semibold text-slate-700">
+                <span>Message</span>
+                <textarea
+                  className="min-h-[120px] rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
+                  disabled={savingPermission}
+                  onChange={(event) => setEditShareForm({ ...editShareForm, message: event.target.value })}
+                  rows="3"
+                  value={editShareForm.message}
+                />
+              </label>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={savingPermission}
+                  onClick={() => setShareToEdit(null)}
+                  type="button"
+                >
+                  Batal
+                </button>
+                <button
+                  className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={savingPermission}
+                  type="submit"
+                >
+                  {savingPermission ? 'Menyimpan...' : 'Simpan'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       ) : null}
