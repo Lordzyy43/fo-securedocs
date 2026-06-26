@@ -6,6 +6,15 @@ import { api } from '../services/api.js'
 import { createPreviewBlob, inferPreviewMimeType, isPreviewableMimeType } from '../utils/filePreview.js'
 import { formatDate, getPageData } from '../utils/format.js'
 
+function sortSharesBySharedDate(shares) {
+  return [...shares].sort((firstShare, secondShare) => {
+    const firstDate = new Date(firstShare.shared_at ?? firstShare.created_at ?? 0).getTime()
+    const secondDate = new Date(secondShare.shared_at ?? secondShare.created_at ?? 0).getTime()
+
+    return secondDate - firstDate
+  })
+}
+
 export function SharesPage({ mode, onError, onSharesChanged, onSuccess, refreshToken, user }) {
   const [shares, setShares] = useState([])
   const [search, setSearch] = useState('')
@@ -46,7 +55,7 @@ export function SharesPage({ mode, onError, onSharesChanged, onSuccess, refreshT
     const response = mode === 'incoming' ? await api.sharedWithMeDocuments() : await api.shares()
     const data = getPageData(response)
 
-    return mode === 'incoming' ? data.map(normalizeSharedDocument) : data
+    return mode === 'incoming' ? sortSharesBySharedDate(data.map(normalizeSharedDocument)) : data
   }, [mode, normalizeSharedDocument])
 
   const loadShares = useCallback(async ({ showLoading = false } = {}) => {
