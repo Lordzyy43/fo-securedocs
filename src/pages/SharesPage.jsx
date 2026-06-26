@@ -6,7 +6,7 @@ import { api } from '../services/api.js'
 import { createPreviewBlob, inferPreviewMimeType, isPreviewableMimeType } from '../utils/filePreview.js'
 import { formatDate, getPageData } from '../utils/format.js'
 
-export function SharesPage({ mode, onError, onSuccess, user }) {
+export function SharesPage({ mode, onError, onSharesChanged, onSuccess, user }) {
   const [shares, setShares] = useState([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
@@ -89,6 +89,7 @@ export function SharesPage({ mode, onError, onSuccess, user }) {
       await api.deleteShare(shareToRevoke.id)
       setShareToRevoke(null)
       await loadShares()
+      onSharesChanged()
       onSuccess('Akses dokumen berhasil dicabut.')
     } catch (error) {
       onError(error)
@@ -114,6 +115,7 @@ export function SharesPage({ mode, onError, onSuccess, user }) {
       await api.updateShare(shareToEdit.id, editShareForm)
       setShareToEdit(null)
       await loadShares()
+      onSharesChanged()
       onSuccess('Permission share berhasil diperbarui.')
     } catch (error) {
       onError(error)
@@ -149,14 +151,16 @@ export function SharesPage({ mode, onError, onSuccess, user }) {
 
   function closeShareDetail() {
     setSelectedShare(null)
+    onSharesChanged()
   }
 
-  function previewSelectedShare() {
+  async function previewSelectedShare() {
     if (!selectedShare?.document) return
 
     const document = selectedShare.document
     closeShareDetail()
-    handlePreview(document)
+    await handlePreview(document)
+    onSharesChanged()
   }
 
   const columns = [
@@ -206,7 +210,10 @@ export function SharesPage({ mode, onError, onSuccess, user }) {
               <button
                 aria-label="Preview document"
                 className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50"
-                onClick={() => setSelectedShare(share)}
+                onClick={() => {
+                  setSelectedShare(share)
+                  onSharesChanged()
+                }}
                 type="button"
               >
                 <Eye size={16} />

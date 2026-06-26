@@ -8,6 +8,7 @@ import { AuditLogsPage } from "./pages/AuditLogsPage.jsx";
 import { UserManagementPage } from "./pages/UserManagementPage.jsx";
 import { ProfilePage } from "./pages/ProfilePage.jsx";
 import { api, ApiError } from "./services/api.js";
+import { getPageData } from "./utils/format.js";
 
 
 const INITIAL_VIEW = "dashboard";
@@ -20,6 +21,7 @@ function App() {
   const [booting, setBooting] = useState(true);
   const [notice, setNotice] = useState(null);
   const [loginNotice, setLoginNotice] = useState(null);
+  const [incomingUnreadCount, setIncomingUnreadCount] = useState(0);
 
   const isAdmin = user?.role?.name === "admin";
   const mustChangePassword = Boolean(user?.force_password_change);
@@ -64,6 +66,42 @@ function App() {
 
     setNotice({ type: "error", message });
   }, []);
+
+  const refreshIncomingUnreadCount = useCallback(async () => {
+    if (!user || isAdmin) {
+      setIncomingUnreadCount(0);
+      return;
+    }
+
+    try {
+      const response = await api.shares();
+      const shares = getPageData(response);
+      setIncomingUnreadCount(
+        shares.filter((share) => share.receiver_id === user.id && share.status === "sent").length,
+      );
+    } catch (error) {
+      showError(error);
+    }
+  }, [isAdmin, showError, user]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      refreshIncomingUnreadCount();
+    });
+
+    if (!user || isAdmin) {
+      return () => {
+        window.cancelAnimationFrame(frame);
+      };
+    }
+
+    const interval = window.setInterval(refreshIncomingUnreadCount, 30000);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearInterval(interval);
+    };
+  }, [activeView, isAdmin, refreshIncomingUnreadCount, user]);
 
   // Fungsi untuk mengecek sesi user saat pertama kali aplikasi dimuat
   useEffect(() => {
@@ -210,6 +248,7 @@ function App() {
             user={user}
             onError={showError}
             onSuccess={(message) => setNotice({ type: "success", message })}
+            onSharesChanged={refreshIncomingUnreadCount}
           />
         );
       case "profile":
@@ -303,6 +342,7 @@ function App() {
       activeView={activeView}
       currentTitle={pageTitles[activeView] ?? "Dashboard Overview"}
       isAdmin={isAdmin}
+      incomingUnreadCount={incomingUnreadCount}
       notice={notice}
       user={user}
       onDismissNotice={() => setNotice(null)}

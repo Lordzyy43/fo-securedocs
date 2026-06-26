@@ -33,6 +33,7 @@ export function AppLayout({
   activeView,
   children,
   currentTitle,
+  incomingUnreadCount = 0,
   isAdmin,
   notice,
   onDismissNotice,
@@ -161,7 +162,12 @@ export function AppLayout({
                           : "text-slate-400 group-hover:text-slate-200"
                       }`}
                     />
-                    <span>{item.label}</span>
+                    <span className="min-w-0 flex-1">{item.label}</span>
+                    {!isAdmin && item.id === "incoming" && incomingUnreadCount > 0 ? (
+                      <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-tealbrand px-1.5 py-0.5 text-[10px] font-black leading-none text-white shadow-sm">
+                        {incomingUnreadCount}
+                      </span>
+                    ) : null}
                   </button>
                 );
               })}
