@@ -1,9 +1,9 @@
 import { Download, Send, Trash2, Upload, Eye, X, PencilLine } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { DataTable } from '../components/DataTable.jsx'
 import { StatusBadge } from '../components/StatusBadge.jsx'
 import { api } from '../services/api.js'
-import { inferPreviewMimeType, isPreviewableMimeType } from '../utils/filePreview.js'
+import { createPreviewBlob, inferPreviewMimeType, isPreviewableMimeType } from '../utils/filePreview.js'
 import { formatBytes, formatDate, getPageData } from '../utils/format.js'
 
 export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
@@ -11,6 +11,7 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
   const [users, setUsers] = useState([])
   const [search, setSearch] = useState('')
   const [selectedFile, setSelectedFile] = useState(null)
+  const fileInputRef = useRef(null)
   const [shareForm, setShareForm] = useState({
     document_id: '',
     receiver_id: '',
@@ -18,13 +19,17 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
     message: '',
   })
   const [loading, setLoading] = useState(true)
-  const [submitting, setSubmitting] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [sharing, setSharing] = useState(false)
+  const [renaming, setRenaming] = useState(false)
   // Preview States
   const [previewFile, setPreviewFile] = useState(null)
   const [previewUrl, setPreviewUrl] = useState(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [editingDocument, setEditingDocument] = useState(null)
+  const [documentToDelete, setDocumentToDelete] = useState(null)
   const [editName, setEditName] = useState('')
+  const [deleting, setDeleting] = useState(false)
 
   // Fetch function for event handlers (upload, delete, etc.)
   async function refreshData() {
@@ -76,29 +81,35 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
     event.preventDefault()
     if (!selectedFile) return
 
-    setSubmitting(true)
+    setUploading(true)
     try {
       await api.uploadDocument(selectedFile)
       setSelectedFile(null)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
       onSuccess('Dokumen berhasil diupload dan dienkripsi.')
       await refreshData()
     } catch (error) {
       onError(error)
     } finally {
-      setSubmitting(false)
+      setUploading(false)
     }
   }
 
-  async function deleteDocument(id) {
-    const confirmed = window.confirm('Hapus dokumen ini?')
-    if (!confirmed) return
+  async function deleteDocument() {
+    if (!documentToDelete) return
 
+    setDeleting(true)
     try {
-      await api.deleteDocument(id)
-      onSuccess('Dokumen berhasil dihapus.')
+      await api.deleteDocument(documentToDelete.id)
+      setDocumentToDelete(null)
       await refreshData()
+      onSuccess('Dokumen berhasil dihapus.')
     } catch (error) {
       onError(error)
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -111,7 +122,7 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
     event.preventDefault()
     if (!editingDocument || !editName.trim()) return
 
-    setSubmitting(true)
+    setRenaming(true)
     try {
       await api.updateDocument(editingDocument.id, { original_name: editName.trim() })
       setEditingDocument(null)
@@ -121,13 +132,13 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
     } catch (error) {
       onError(error)
     } finally {
-      setSubmitting(false)
+      setRenaming(false)
     }
   }
 
   async function shareDocument(event) {
     event.preventDefault()
-    setSubmitting(true)
+    setSharing(true)
 
     try {
       await api.createShare(shareForm)
@@ -136,15 +147,19 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
     } catch (error) {
       onError(error)
     } finally {
-      setSubmitting(false)
+      setSharing(false)
     }
   }
 
-  function handlePreview(doc) {
+  async function handlePreview(doc) {
     setPreviewLoading(true)
     try {
       const mimeType = inferPreviewMimeType(doc)
-      setPreviewUrl(api.previewDocumentUrl(doc))
+      const previewUrl = mimeType === 'application/pdf'
+        ? URL.createObjectURL(createPreviewBlob(await api.previewDocument(doc), mimeType))
+        : api.previewDocumentUrl(doc)
+
+      setPreviewUrl(previewUrl)
       setPreviewFile({ ...doc, mime_type: mimeType })
     } catch (error) {
       onError(error)
@@ -242,7 +257,7 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
                 <button
                   aria-label="Delete document"
                   className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-rose-200 bg-rose-50 text-rose-700 shadow-sm transition hover:bg-rose-100"
-                  onClick={() => deleteDocument(document.id)}
+                  onClick={() => setDocumentToDelete(document)}
                   type="button"
                 >
                   <Trash2 size={16} />
@@ -289,16 +304,17 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
                   accept=".pdf,.docx,.xlsx,.jpg,.jpeg,.png"
                   className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
                   onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
+                  ref={fileInputRef}
                   required={mode === 'upload'}
                   type="file"
                 />
               </label>
               <button
                 className="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={!selectedFile || submitting}
+                disabled={!selectedFile || uploading}
                 type="submit"
               >
-                {submitting ? 'Uploading...' : 'Upload & Encrypt'}
+                {uploading ? 'Uploading...' : 'Upload & Encrypt'}
               </button>
             </form>
           </section>
@@ -371,10 +387,10 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
 
               <button
                 className="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={submitting}
+                disabled={sharing}
                 type="submit"
               >
-                {submitting ? 'Sharing...' : 'Share now'}
+                {sharing ? 'Sharing...' : 'Share now'}
               </button>
             </form>
           </section>
@@ -431,13 +447,66 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
                 </button>
                 <button
                   className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
-                  disabled={submitting || !editName.trim()}
+                  disabled={renaming || !editName.trim()}
                   type="submit"
                 >
-                  {submitting ? 'Saving...' : 'Save'}
+                  {renaming ? 'Saving...' : 'Save'}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {documentToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-[2rem] border border-slate-200 bg-white p-6 shadow-2xl animate-in zoom-in-95 duration-150">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-widest text-rose-600">Document removal</p>
+                <h3 className="text-lg font-bold text-slate-950">Hapus Dokumen</h3>
+              </div>
+              <button
+                aria-label="Close delete confirmation"
+                className="rounded-lg p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={deleting}
+                onClick={() => setDocumentToDelete(null)}
+                type="button"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="grid gap-4">
+              <p className="text-sm font-medium text-slate-600">
+                Apakah Anda yakin ingin menghapus dokumen ini?
+              </p>
+              <div className="rounded-2xl border border-rose-100 bg-rose-50 p-4">
+                <p className="text-xs font-bold uppercase tracking-widest text-rose-500">File</p>
+                <p className="mt-1 break-words text-sm font-bold text-rose-950">
+                  {documentToDelete.original_name ?? 'Unknown document'}
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={deleting}
+                  onClick={() => setDocumentToDelete(null)}
+                  type="button"
+                >
+                  Batal
+                </button>
+                <button
+                  className="rounded-2xl bg-rose-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={deleting}
+                  onClick={deleteDocument}
+                  type="button"
+                >
+                  {deleting ? 'Menghapus...' : 'Hapus'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

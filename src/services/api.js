@@ -152,6 +152,7 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   deleteDocument: (id) => request(`/documents/${id}`, { method: 'DELETE' }),
+  sharedWithMeDocuments: (params) => request(`/documents/shared-with-me${toQuery(params)}`),
   previewDocumentUrl: (file) => `/documents/${file.id}/preview`,
   previewDocument: async (file) => {
     const response = await fetch(`/documents/${file.id}/preview`, {
@@ -187,6 +188,11 @@ export const api = {
   createShare: (payload) =>
     request('/document-shares', {
       method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateShare: (id, payload) =>
+    request(`/document-shares/${id}`, {
+      method: 'PUT',
       body: JSON.stringify(payload),
     }),
   deleteShare: (id) => request(`/document-shares/${id}`, { method: 'DELETE' }),

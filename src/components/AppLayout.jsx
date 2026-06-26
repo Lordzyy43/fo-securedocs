@@ -1,7 +1,6 @@
 import {
   LayoutDashboard, // Menggantikan BarChart3 untuk Dashboard yang lebih umum
   FolderLock, // Menggantikan FileText untuk My Documents (kesan terenkripsi)
-  FileUp, // Menggantikan Upload untuk Upload Documents
   Inbox,
   FileSpreadsheet, // Menggantikan Send untuk Sent (representasi file terkirim)
   ShieldCheck,
@@ -13,12 +12,11 @@ import {
   Menu,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const baseItems = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "documents", label: "My Documents", icon: FolderLock },
-  { id: "upload", label: "Upload Documents", icon: FileUp },
   { id: "incoming", label: "Incoming Shares", icon: Inbox },
   { id: "sent", label: "Sent Shares", icon: FileSpreadsheet },
   { id: "profile", label: "Profile & Security", icon: User },
@@ -35,6 +33,7 @@ export function AppLayout({
   activeView,
   children,
   currentTitle,
+  incomingUnreadCount = 0,
   isAdmin,
   notice,
   onDismissNotice,
@@ -43,7 +42,59 @@ export function AppLayout({
   user,
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [toastVisible, setToastVisible] = useState(false);
+  const dismissTimerRef = useRef(null);
+  const removeTimerRef = useRef(null);
   const items = isAdmin ? [...baseItems, ...adminItems] : baseItems;
+
+  const clearToastTimers = useCallback(() => {
+    if (dismissTimerRef.current) {
+      clearTimeout(dismissTimerRef.current);
+      dismissTimerRef.current = null;
+    }
+
+    if (removeTimerRef.current) {
+      clearTimeout(removeTimerRef.current);
+      removeTimerRef.current = null;
+    }
+  }, []);
+
+  const dismissToast = useCallback(() => {
+    clearToastTimers();
+    setToastVisible(false);
+    removeTimerRef.current = setTimeout(() => {
+      onDismissNotice();
+      removeTimerRef.current = null;
+    }, 200);
+  }, [clearToastTimers, onDismissNotice]);
+
+  useEffect(() => {
+    if (!notice) {
+      clearToastTimers();
+      const frame = requestAnimationFrame(() => {
+        setToastVisible(false);
+      });
+
+      return () => {
+        cancelAnimationFrame(frame);
+      };
+    }
+
+    clearToastTimers();
+
+    const frame = requestAnimationFrame(() => {
+      setToastVisible(true);
+    });
+
+    dismissTimerRef.current = setTimeout(() => {
+      dismissToast();
+    }, 4000);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      clearToastTimers();
+    };
+  }, [clearToastTimers, dismissToast, notice]);
 
   function navigate(view) {
     onNavigate(view);
@@ -111,7 +162,12 @@ export function AppLayout({
                           : "text-slate-400 group-hover:text-slate-200"
                       }`}
                     />
-                    <span>{item.label}</span>
+                    <span className="min-w-0 flex-1">{item.label}</span>
+                    {!isAdmin && item.id === "incoming" && incomingUnreadCount > 0 ? (
+                      <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-tealbrand px-1.5 py-0.5 text-[10px] font-black leading-none text-white shadow-sm">
+                        {incomingUnreadCount}
+                      </span>
+                    ) : null}
                   </button>
                 );
               })}
@@ -197,20 +253,27 @@ export function AppLayout({
             </div>
           </header>
 
-          {/* BANNER NOTIFIKASI */}
+          {/* TOAST NOTIFIKASI */}
           {notice ? (
-            <div className="mx-6 mt-4 lg:mx-8 animate-in fade-in slide-in-from-top-1 duration-150">
+            <div
+              className={`fixed right-4 top-4 z-50 w-[calc(100vw-2rem)] max-w-sm transition-all duration-200 ease-out sm:right-6 sm:top-6 ${
+                toastVisible
+                  ? "translate-y-0 opacity-100 scale-100"
+                  : "-translate-y-3 opacity-0 scale-95"
+              }`}
+            >
               <div
-                className={`rounded-lg border p-3.5 text-xs font-semibold flex items-center justify-between gap-4 ${
+                className={`flex items-start justify-between gap-4 rounded-xl border p-4 text-sm font-semibold shadow-2xl backdrop-blur ${
                   notice.type === "success"
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-950"
-                    : "border-rose-200 bg-rose-50 text-rose-950"
+                    ? "border-emerald-200 bg-emerald-50/95 text-emerald-950"
+                    : "border-rose-200 bg-rose-50/95 text-rose-950"
                 }`}
               >
-                <p>{notice.message}</p>
+                <p className="leading-5">{notice.message}</p>
                 <button
-                  className="rounded-md p-1 text-slate-400 hover:bg-slate-200/60 hover:text-slate-700 transition"
-                  onClick={onDismissNotice}
+                  aria-label="Close notification"
+                  className="shrink-0 rounded-md p-1 text-current opacity-60 transition hover:bg-white/60 hover:opacity-100"
+                  onClick={dismissToast}
                   type="button"
                 >
                   <X size={14} />

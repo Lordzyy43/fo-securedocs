@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { AppLayout } from "./components/AppLayout.jsx";
 import { LoginPage } from "./pages/LoginPage.jsx";
 import { DashboardPage } from "./pages/DashboardPage.jsx";
@@ -8,6 +8,7 @@ import { AuditLogsPage } from "./pages/AuditLogsPage.jsx";
 import { UserManagementPage } from "./pages/UserManagementPage.jsx";
 import { ProfilePage } from "./pages/ProfilePage.jsx";
 import { api, ApiError } from "./services/api.js";
+import { getPageData } from "./utils/format.js";
 
 
 const INITIAL_VIEW = "dashboard";
@@ -20,6 +21,9 @@ function App() {
   const [booting, setBooting] = useState(true);
   const [notice, setNotice] = useState(null);
   const [loginNotice, setLoginNotice] = useState(null);
+  const [incomingUnreadCount, setIncomingUnreadCount] = useState(0);
+  const [sharesRefreshToken, setSharesRefreshToken] = useState(0);
+  const unreadFetchInFlightRef = useRef(false);
 
   const isAdmin = user?.role?.name === "admin";
   const mustChangePassword = Boolean(user?.force_password_change);
@@ -30,7 +34,6 @@ function App() {
     () => ({
       dashboard: "Dashboard Overview",
       documents: isAdmin ? "All Documents" : "My Documents",
-      upload: "Upload Documents",
       incoming: "Incoming Shares",
       sent: "Sent Shares",
       users: "User Management",
@@ -65,6 +68,53 @@ function App() {
 
     setNotice({ type: "error", message });
   }, []);
+
+  const refreshIncomingUnreadCount = useCallback(async () => {
+    if (!user || isAdmin) {
+      setIncomingUnreadCount(0);
+      return;
+    }
+
+    if (unreadFetchInFlightRef.current) return;
+
+    unreadFetchInFlightRef.current = true;
+
+    try {
+      const response = await api.shares();
+      const shares = getPageData(response);
+      setIncomingUnreadCount(
+        shares.filter((share) => share.receiver_id === user.id && share.status === "sent").length,
+      );
+    } catch (error) {
+      showError(error);
+    } finally {
+      unreadFetchInFlightRef.current = false;
+    }
+  }, [isAdmin, showError, user]);
+
+  const refreshShareData = useCallback(() => {
+    refreshIncomingUnreadCount();
+    setSharesRefreshToken((token) => token + 1);
+  }, [refreshIncomingUnreadCount]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      refreshIncomingUnreadCount();
+    });
+
+    if (!user || isAdmin || !["incoming", "sent"].includes(activeView)) {
+      return () => {
+        window.cancelAnimationFrame(frame);
+      };
+    }
+
+    const interval = window.setInterval(refreshShareData, 5000);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearInterval(interval);
+    };
+  }, [activeView, isAdmin, refreshIncomingUnreadCount, refreshShareData, user]);
 
   // Fungsi untuk mengecek sesi user saat pertama kali aplikasi dimuat
   useEffect(() => {
@@ -195,7 +245,6 @@ function App() {
   function renderPage() {
     switch (activeView) {
       case "documents":
-      case "upload":
         return (
           <DocumentsPage
             mode={activeView}
@@ -206,7 +255,16 @@ function App() {
         );
       case "incoming":
       case "sent":
-        return <SharesPage mode={activeView} user={user} onError={showError} />;
+        return (
+          <SharesPage
+            mode={activeView}
+            user={user}
+            onError={showError}
+            onSuccess={(message) => setNotice({ type: "success", message })}
+            onSharesChanged={refreshShareData}
+            refreshToken={sharesRefreshToken}
+          />
+        );
       case "profile":
         return (
           <ProfilePage
@@ -298,6 +356,7 @@ function App() {
       activeView={activeView}
       currentTitle={pageTitles[activeView] ?? "Dashboard Overview"}
       isAdmin={isAdmin}
+      incomingUnreadCount={incomingUnreadCount}
       notice={notice}
       user={user}
       onDismissNotice={() => setNotice(null)}
