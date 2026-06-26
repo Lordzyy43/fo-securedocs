@@ -19,7 +19,9 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
     message: '',
   })
   const [loading, setLoading] = useState(true)
-  const [submitting, setSubmitting] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [sharing, setSharing] = useState(false)
+  const [renaming, setRenaming] = useState(false)
   // Preview States
   const [previewFile, setPreviewFile] = useState(null)
   const [previewUrl, setPreviewUrl] = useState(null)
@@ -77,7 +79,7 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
     event.preventDefault()
     if (!selectedFile) return
 
-    setSubmitting(true)
+    setUploading(true)
     try {
       await api.uploadDocument(selectedFile)
       setSelectedFile(null)
@@ -89,7 +91,7 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
     } catch (error) {
       onError(error)
     } finally {
-      setSubmitting(false)
+      setUploading(false)
     }
   }
 
@@ -115,7 +117,7 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
     event.preventDefault()
     if (!editingDocument || !editName.trim()) return
 
-    setSubmitting(true)
+    setRenaming(true)
     try {
       await api.updateDocument(editingDocument.id, { original_name: editName.trim() })
       setEditingDocument(null)
@@ -125,13 +127,13 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
     } catch (error) {
       onError(error)
     } finally {
-      setSubmitting(false)
+      setRenaming(false)
     }
   }
 
   async function shareDocument(event) {
     event.preventDefault()
-    setSubmitting(true)
+    setSharing(true)
 
     try {
       await api.createShare(shareForm)
@@ -140,7 +142,7 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
     } catch (error) {
       onError(error)
     } finally {
-      setSubmitting(false)
+      setSharing(false)
     }
   }
 
@@ -304,10 +306,10 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
               </label>
               <button
                 className="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={!selectedFile || submitting}
+                disabled={!selectedFile || uploading}
                 type="submit"
               >
-                {submitting ? 'Uploading...' : 'Upload & Encrypt'}
+                {uploading ? 'Uploading...' : 'Upload & Encrypt'}
               </button>
             </form>
           </section>
@@ -380,10 +382,10 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
 
               <button
                 className="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={submitting}
+                disabled={sharing}
                 type="submit"
               >
-                {submitting ? 'Sharing...' : 'Share now'}
+                {sharing ? 'Sharing...' : 'Share now'}
               </button>
             </form>
           </section>
@@ -440,10 +442,10 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
                 </button>
                 <button
                   className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
-                  disabled={submitting || !editName.trim()}
+                  disabled={renaming || !editName.trim()}
                   type="submit"
                 >
-                  {submitting ? 'Saving...' : 'Save'}
+                  {renaming ? 'Saving...' : 'Save'}
                 </button>
               </div>
             </form>
