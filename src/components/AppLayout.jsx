@@ -3,6 +3,7 @@ import {
   FolderLock, // Menggantikan FileText untuk My Documents (kesan terenkripsi)
   Inbox,
   FileSpreadsheet, // Menggantikan Send untuk Sent (representasi file terkirim)
+  Share2,
   ShieldCheck,
   History, // Menggantikan ScrollText untuk Audit Logs (jejak riwayat)
   Users, // Icon untuk User Management
@@ -15,17 +16,58 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const baseItems = [
-  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { id: "documents", label: "My Documents", icon: FolderLock },
-  { id: "incoming", label: "Incoming Shares", icon: Inbox },
-  { id: "sent", label: "Sent Shares", icon: FileSpreadsheet },
-  { id: "profile", label: "Profile & Security", icon: User },
+  { id: "dashboard", label: "Dashboard", description: "Ringkasan aktivitas", icon: LayoutDashboard },
+  { id: "documents", label: "Dokumen Saya", description: "Upload dan kelola file", icon: FolderLock },
+  { id: "incoming", label: "Dibagikan ke Saya", description: "Dokumen masuk", icon: Inbox },
+  { id: "sent", label: "Riwayat Berbagi", description: "Dokumen terkirim", icon: FileSpreadsheet },
+  { id: "profile", label: "Profil & Keamanan", description: "Password dan PIN", icon: User },
 ];
 
 
 const adminItems = [
-  { id: "users", label: "User Management", icon: Users },
-  { id: "audit", label: "Audit Logs", icon: History },
+  { id: "users", label: "User & Role Management", description: "Akun, role, reset akses", icon: Users },
+  { id: "audit", label: "Security Audit Trail", description: "Log aktivitas sensitif", icon: History },
+];
+
+const userNavSections = [
+  {
+    label: "Workspace",
+    items: baseItems.filter((item) => ["dashboard", "documents"].includes(item.id)),
+  },
+  {
+    label: "Kolaborasi",
+    items: baseItems.filter((item) => ["incoming", "sent"].includes(item.id)),
+  },
+  {
+    label: "Akun",
+    items: baseItems.filter((item) => item.id === "profile"),
+  },
+];
+
+const adminNavSections = [
+  {
+    label: "Control Center",
+    items: [
+      { id: "dashboard", label: "Command Center", description: "Ringkasan sistem", icon: LayoutDashboard },
+    ],
+  },
+  {
+    label: "Repository",
+    items: [
+      { id: "documents", label: "Document Vault", description: "Kelola seluruh dokumen", icon: FolderLock },
+      { id: "share-oversight", label: "Share Oversight", description: "Monitor berbagi dokumen", icon: Share2 },
+    ],
+  },
+  {
+    label: "Administration",
+    items: adminItems,
+  },
+  {
+    label: "Account",
+    items: [
+      { id: "profile", label: "My Profile & Security", description: "Password dan PIN", icon: User },
+    ],
+  },
 ];
 
 
@@ -45,7 +87,7 @@ export function AppLayout({
   const [toastVisible, setToastVisible] = useState(false);
   const dismissTimerRef = useRef(null);
   const removeTimerRef = useRef(null);
-  const items = isAdmin ? [...baseItems, ...adminItems] : baseItems;
+  const navSections = isAdmin ? adminNavSections : userNavSections;
 
   const clearToastTimers = useCallback(() => {
     if (dismissTimerRef.current) {
@@ -110,11 +152,11 @@ export function AppLayout({
             sidebarOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full"
           }`}
         >
-          <div className="flex flex-col gap-8">
+          <div className="flex min-h-0 flex-col gap-7">
             {/* Header Brand */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-tealbrand font-extrabold text-white shadow-sm">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-tealbrand font-extrabold text-white shadow-sm">
                   S
                 </div>
                 <div>
@@ -122,7 +164,7 @@ export function AppLayout({
                     SecureDocs
                   </p>
                   <p className="text-[11px] font-medium text-slate-400">
-                    Encrypted DMS
+                    {isAdmin ? "Admin Control Panel" : "Encrypted Workspace"}
                   </p>
                 </div>
               </div>
@@ -138,39 +180,61 @@ export function AppLayout({
               </button>
             </div>
 
-            {/* Menu Navigasi (Ikon Baru & Desain Minimalis) */}
-            <nav className="space-y-1" aria-label="Main navigation">
-              {items.map((item) => {
-                const Icon = item.icon;
-                const isActive = activeView === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => navigate(item.id)}
-                    type="button"
-                    className={`group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-semibold transition-all duration-150 ${
-                      isActive
-                        ? "bg-slate-800 text-teal-400"
-                        : "text-slate-400 hover:bg-slate-800/40 hover:text-slate-100"
-                    }`}
-                  >
-                    <Icon
-                      size={18}
-                      className={`transition-colors duration-150 ${
-                        isActive
-                          ? "text-teal-400"
-                          : "text-slate-400 group-hover:text-slate-200"
-                      }`}
-                    />
-                    <span className="min-w-0 flex-1">{item.label}</span>
-                    {!isAdmin && item.id === "incoming" && incomingUnreadCount > 0 ? (
-                      <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-tealbrand px-1.5 py-0.5 text-[10px] font-black leading-none text-white shadow-sm">
-                        {incomingUnreadCount}
-                      </span>
-                    ) : null}
-                  </button>
-                );
-              })}
+            {/* Menu Navigasi Admin Panel */}
+            <nav className="min-h-0 space-y-5 overflow-y-auto pr-1" aria-label="Main navigation">
+              {navSections.map((section) => (
+                <div className="space-y-2" key={section.label}>
+                  <p className="px-3 text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">
+                    {section.label}
+                  </p>
+                  <div className="space-y-1">
+                    {section.items.map((item) => {
+                      const Icon = item.icon;
+                      const isActive = activeView === item.id;
+
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => navigate(item.id)}
+                          type="button"
+                          className={`group flex w-full items-center gap-3 rounded-2xl px-3.5 py-3 text-left transition-all duration-150 ${
+                            isActive
+                              ? "bg-slate-800 text-teal-300 shadow-sm ring-1 ring-teal-400/15"
+                              : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-100"
+                          }`}
+                        >
+                          <span
+                            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors ${
+                              isActive
+                                ? "bg-tealbrand/15 text-teal-300"
+                                : "bg-slate-900 text-slate-500 group-hover:text-slate-200"
+                            }`}
+                          >
+                            <Icon size={17} />
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-bold">
+                              {item.label}
+                            </span>
+                            <span
+                              className={`mt-0.5 block truncate text-[10px] font-medium ${
+                                isActive ? "text-teal-100/70" : "text-slate-500"
+                              }`}
+                            >
+                              {item.description}
+                            </span>
+                          </span>
+                          {item.id === "incoming" && incomingUnreadCount > 0 ? (
+                            <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-tealbrand px-1.5 py-0.5 text-[10px] font-black leading-none text-white shadow-sm">
+                              {incomingUnreadCount}
+                            </span>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </nav>
           </div>
 

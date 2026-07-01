@@ -32,13 +32,14 @@ function App() {
   // Selaraskan judul dengan komponen AppLayout kustom baru kita
   const pageTitles = useMemo(
     () => ({
-      dashboard: "Dashboard Overview",
-      documents: isAdmin ? "All Documents" : "My Documents",
-      incoming: "Incoming Shares",
-      sent: "Sent Shares",
-      users: "User Management",
-      profile: "Profile & Security",
-      audit: "System Audit Logs",
+      dashboard: isAdmin ? "Command Center" : "Dashboard",
+      documents: isAdmin ? "Document Vault" : "Dokumen Saya",
+      incoming: isAdmin ? "Incoming Shares" : "Dibagikan ke Saya",
+      sent: isAdmin ? "Sent Shares" : "Riwayat Berbagi",
+      "share-oversight": "Share Oversight",
+      users: "User & Role Management",
+      profile: isAdmin ? "My Profile & Security" : "Profil & Keamanan",
+      audit: "Security Audit Trail",
     }),
     [isAdmin],
   );
@@ -251,6 +252,24 @@ function App() {
             isAdmin={isAdmin}
             onError={showError}
             onSuccess={(message) => setNotice({ type: "success", message })}
+          />
+        );
+      case "share-oversight":
+        return isAdmin ? (
+          <SharesPage
+            mode={activeView}
+            user={user}
+            onError={showError}
+            onSuccess={(message) => setNotice({ type: "success", message })}
+            onSharesChanged={refreshShareData}
+            refreshToken={sharesRefreshToken}
+          />
+        ) : (
+          <DashboardPage
+            user={user}
+            isAdmin={isAdmin}
+            onNavigate={setView}
+            onError={showError}
           />
         );
       case "incoming":
