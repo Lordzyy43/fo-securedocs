@@ -29,8 +29,9 @@ export function DashboardPage({ isAdmin, onError, onNavigate, user }) {
       encrypted: documents.filter((document) => document.encrypted).length,
       incoming: isAdmin ? shares.length : shares.filter((share) => share.receiver_id === user.id).length,
       sent: isAdmin ? shares.length : shares.filter((share) => share.sender_id === user.id).length,
+      failedAudit: logs.filter((log) => log.status === 'failure').length,
     }),
-    [documents, isAdmin, shares, user.id],
+    [documents, isAdmin, logs, shares, user.id],
   )
 
   if (loading) {
@@ -46,8 +47,17 @@ export function DashboardPage({ isAdmin, onError, onNavigate, user }) {
       <section className="grid gap-4 xl:grid-cols-4">
         <StatCard icon={FileText} label="Total Documents" value={documents.length} />
         <StatCard icon={FileCheck2} label="Encrypted" tone="green" value={stats.encrypted} />
-        <StatCard icon={Inbox} label="Incoming Files" tone="amber" value={stats.incoming} />
-        <StatCard icon={Send} label="Sent Files" tone="purple" value={stats.sent} />
+        {isAdmin ? (
+          <>
+            <StatCard icon={Send} label="Share Records" tone="amber" value={shares.length} />
+            <StatCard icon={ScrollText} label="Failed Audit" tone="purple" value={stats.failedAudit} />
+          </>
+        ) : (
+          <>
+            <StatCard icon={Inbox} label="Incoming Files" tone="amber" value={stats.incoming} />
+            <StatCard icon={Send} label="Sent Files" tone="purple" value={stats.sent} />
+          </>
+        )}
       </section>
 
       <section className="grid gap-4 md:grid-cols-2">
@@ -86,6 +96,20 @@ export function DashboardPage({ isAdmin, onError, onNavigate, user }) {
             </div>
             <strong className="block text-lg">Audit Logs</strong>
             <p className="mt-2 text-sm text-slate-500">Monitor login, upload, download, delete, dan share.</p>
+          </button>
+        ) : null}
+
+        {isAdmin ? (
+          <button
+            className="rounded-[2rem] border border-slate-200 bg-white p-6 text-left shadow-soft transition hover:border-cyan-300 hover:ring-1 hover:ring-cyan-100"
+            onClick={() => onNavigate('share-oversight')}
+            type="button"
+          >
+            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-100 text-cyan-700">
+              <Send size={22} />
+            </div>
+            <strong className="block text-lg">Share Oversight</strong>
+            <p className="mt-2 text-sm text-slate-500">Monitor pengirim, penerima, permission, dan status share.</p>
           </button>
         ) : null}
       </section>
