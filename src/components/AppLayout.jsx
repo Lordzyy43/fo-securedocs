@@ -1,9 +1,10 @@
 import {
+  AlertCircle,
   LayoutDashboard, // Menggantikan BarChart3 untuk Dashboard yang lebih umum
   FolderLock, // Menggantikan FileText untuk My Documents (kesan terenkripsi)
   Inbox,
   FileSpreadsheet, // Menggantikan Send untuk Sent (representasi file terkirim)
-  Share2,
+  Send,
   ShieldCheck,
   History, // Menggantikan ScrollText untuk Audit Logs (jejak riwayat)
   Users, // Icon untuk User Management
@@ -17,7 +18,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 const baseItems = [
   { id: "dashboard", label: "Dashboard", description: "Ringkasan aktivitas", icon: LayoutDashboard },
-  { id: "documents", label: "Dokumen Saya", description: "Upload dan kelola file", icon: FolderLock },
+  { id: "documents", label: "Dokumen Saya", description: "Kelola file pribadi", icon: FolderLock },
+  { id: "share-documents", label: "Share Document", description: "Bagikan dokumen", icon: Send },
   { id: "incoming", label: "Dibagikan ke Saya", description: "Dokumen masuk", icon: Inbox },
   { id: "sent", label: "Riwayat Berbagi", description: "Dokumen terkirim", icon: FileSpreadsheet },
   { id: "profile", label: "Profil & Keamanan", description: "Password dan PIN", icon: User },
@@ -32,7 +34,7 @@ const adminItems = [
 const userNavSections = [
   {
     label: "Workspace",
-    items: baseItems.filter((item) => ["dashboard", "documents"].includes(item.id)),
+    items: baseItems.filter((item) => ["dashboard", "documents", "share-documents"].includes(item.id)),
   },
   {
     label: "Kolaborasi",
@@ -49,13 +51,6 @@ const adminNavSections = [
     label: "Control Center",
     items: [
       { id: "dashboard", label: "Command Center", description: "Ringkasan sistem", icon: LayoutDashboard },
-    ],
-  },
-  {
-    label: "Repository",
-    items: [
-      { id: "documents", label: "Document Vault", description: "Kelola seluruh dokumen", icon: FolderLock },
-      { id: "share-oversight", label: "Share Oversight", description: "Monitor berbagi dokumen", icon: Share2 },
     ],
   },
   {
@@ -84,10 +79,43 @@ export function AppLayout({
   user,
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [notificationOpen, setNotificationOpen] = useState(false);
   const [toastVisible, setToastVisible] = useState(false);
   const dismissTimerRef = useRef(null);
+  const notificationRef = useRef(null);
   const removeTimerRef = useRef(null);
   const navSections = isAdmin ? adminNavSections : userNavSections;
+
+  const notifications = [
+    !isAdmin && incomingUnreadCount > 0
+      ? {
+          id: "incoming-share",
+          title: `${incomingUnreadCount} dokumen baru dibagikan`,
+          description: "Ada dokumen masuk yang belum kamu buka.",
+          tone: "teal",
+          actionLabel: "Lihat dokumen",
+          actionView: "incoming",
+        }
+      : null,
+    {
+      id: "secure-session",
+      title: "Sesi keamanan aktif",
+      description: "Password, PIN, dan enkripsi dokumen sedang aktif.",
+      tone: "slate",
+      actionLabel: "Profil & Keamanan",
+      actionView: "profile",
+    },
+    isAdmin
+      ? {
+          id: "audit-ready",
+          title: "Audit trail tersedia",
+          description: "Pantau aktivitas login, share, download, dan perubahan akses.",
+          tone: "amber",
+          actionLabel: "Buka audit",
+          actionView: "audit",
+        }
+      : null,
+  ].filter(Boolean);
 
   const clearToastTimers = useCallback(() => {
     if (dismissTimerRef.current) {
@@ -138,9 +166,34 @@ export function AppLayout({
     };
   }, [clearToastTimers, dismissToast, notice]);
 
+  useEffect(() => {
+    if (!notificationOpen) return undefined;
+
+    function handleClickOutside(event) {
+      if (notificationRef.current && !notificationRef.current.contains(event.target)) {
+        setNotificationOpen(false);
+      }
+    }
+
+    function handleEscape(event) {
+      if (event.key === "Escape") {
+        setNotificationOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [notificationOpen]);
+
   function navigate(view) {
     onNavigate(view);
     setSidebarOpen(false);
+    setNotificationOpen(false);
   }
 
   return (
@@ -281,14 +334,96 @@ export function AppLayout({
             {/* Aksi & Profil Pengguna */}
             <div className="flex items-center gap-4">
               {/* Tombol Notifikasi */}
-              <button
-                aria-label="Notifications"
-                className="relative inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
-                type="button"
-              >
-                <Bell size={18} />
-                <span className="absolute right-2.5 top-2.5 h-1.5 w-1.5 rounded-full bg-tealbrand" />
-              </button>
+              <div className="relative" ref={notificationRef}>
+                <button
+                  aria-expanded={notificationOpen}
+                  aria-label="Notifications"
+                  className={`relative inline-flex h-9 w-9 items-center justify-center rounded-lg border transition ${
+                    notificationOpen
+                      ? "border-teal-200 bg-teal-50 text-teal-700"
+                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                  }`}
+                  onClick={() => setNotificationOpen((open) => !open)}
+                  type="button"
+                >
+                  <Bell size={18} />
+                  {incomingUnreadCount > 0 ? (
+                    <span className="absolute -right-1 -top-1 inline-flex min-w-4 items-center justify-center rounded-full bg-tealbrand px-1 text-[9px] font-black leading-4 text-white shadow-sm">
+                      {incomingUnreadCount > 9 ? "9+" : incomingUnreadCount}
+                    </span>
+                  ) : (
+                    <span className="absolute right-2.5 top-2.5 h-1.5 w-1.5 rounded-full bg-tealbrand" />
+                  )}
+                </button>
+
+                {notificationOpen ? (
+                  <div className="absolute right-0 top-12 z-50 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl shadow-slate-950/15 animate-in fade-in zoom-in-95 duration-150">
+                    <div className="border-b border-slate-100 bg-slate-50/80 px-5 py-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-[0.24em] text-teal-600">
+                            Notification
+                          </p>
+                          <h2 className="mt-1 text-sm font-black text-slate-950">
+                            Pusat Informasi
+                          </h2>
+                        </div>
+                        <button
+                          aria-label="Close notifications"
+                          className="rounded-xl p-1 text-slate-400 transition hover:bg-white hover:text-slate-700"
+                          onClick={() => setNotificationOpen(false)}
+                          type="button"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="max-h-[24rem] space-y-2 overflow-y-auto p-3">
+                      {notifications.length > 0 ? (
+                        notifications.map((notification) => (
+                          <button
+                            className="group flex w-full gap-3 rounded-2xl p-3 text-left transition hover:bg-slate-50"
+                            key={notification.id}
+                            onClick={() => navigate(notification.actionView)}
+                            type="button"
+                          >
+                            <span
+                              className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl ${
+                                notification.tone === "teal"
+                                  ? "bg-teal-50 text-teal-700"
+                                  : notification.tone === "amber"
+                                    ? "bg-amber-50 text-amber-700"
+                                    : "bg-slate-100 text-slate-600"
+                              }`}
+                            >
+                              {notification.id === "incoming-share" ? <Inbox size={17} /> : <AlertCircle size={17} />}
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-sm font-bold text-slate-950">
+                                {notification.title}
+                              </span>
+                              <span className="mt-1 block text-xs leading-5 text-slate-500">
+                                {notification.description}
+                              </span>
+                              <span className="mt-2 inline-flex text-xs font-black text-teal-700 group-hover:text-teal-800">
+                                {notification.actionLabel}
+                              </span>
+                            </span>
+                          </button>
+                        ))
+                      ) : (
+                        <div className="rounded-2xl bg-slate-50 p-5 text-center">
+                          <p className="text-sm font-bold text-slate-800">Belum ada notifikasi baru.</p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            Aktivitas share dan keamanan akan muncul di sini.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
 
               {/* Informasi User Profil */}
               <div className="hidden items-center gap-2.5 rounded-lg border border-gray-200 bg-slate-50 p-1 pr-3.5 lg:flex">

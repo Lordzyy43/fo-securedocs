@@ -3,18 +3,34 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { DataTable } from '../components/DataTable.jsx'
 import { StatusBadge } from '../components/StatusBadge.jsx'
 import { api } from '../services/api.js'
-import { createPreviewBlob, inferPreviewMimeType, isPreviewableMimeType } from '../utils/filePreview.js'
+import {
+  createPreviewBlob,
+  createRestrictedPdfViewerUrl,
+  inferPreviewMimeType,
+  isPreviewableMimeType,
+} from '../utils/filePreview.js'
 import { formatBytes, formatDate, getPageData } from '../utils/format.js'
 
-export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
+const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024
+
+export function DocumentsPage({
+  mode,
+  isAdmin,
+  initialShareDocumentId = '',
+  onError,
+  onStartShare,
+  onSuccess,
+}) {
   const [documents, setDocuments] = useState([])
   const [users, setUsers] = useState([])
   const [search, setSearch] = useState('')
   const [recipientSearch, setRecipientSearch] = useState('')
   const [selectedFile, setSelectedFile] = useState(null)
   const fileInputRef = useRef(null)
+  const isShareMode = mode === 'share-documents'
+  const isDocumentsMode = mode === 'documents'
   const [shareForm, setShareForm] = useState({
-    document_id: '',
+    document_id: initialShareDocumentId ? String(initialShareDocumentId) : '',
     recipients: [],
     message: '',
   })
@@ -28,6 +44,7 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
   const [previewLoading, setPreviewLoading] = useState(false)
   const [editingDocument, setEditingDocument] = useState(null)
   const [documentToDelete, setDocumentToDelete] = useState(null)
+  const [showUploadModal, setShowUploadModal] = useState(false)
   const [editName, setEditName] = useState('')
   const [deleting, setDeleting] = useState(false)
 
@@ -81,10 +98,16 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
     event.preventDefault()
     if (!selectedFile) return
 
+    if (selectedFile.size > MAX_UPLOAD_SIZE_BYTES) {
+      onError(new Error('Ukuran file maksimal 10 MB. Pilih file yang lebih kecil.'))
+      return
+    }
+
     setUploading(true)
     try {
       await api.uploadDocument(selectedFile)
       setSelectedFile(null)
+      setShowUploadModal(false)
       if (fileInputRef.current) {
         fileInputRef.current.value = ''
       }
@@ -305,7 +328,14 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
                 <button
                   aria-label="Select for sharing"
                   className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50"
-                  onClick={() => setShareForm({ ...shareForm, document_id: String(document.id) })}
+                  onClick={() => {
+                    if (onStartShare) {
+                      onStartShare(String(document.id))
+                      return
+                    }
+
+                    setShareForm({ ...shareForm, document_id: String(document.id) })
+                  }}
                   type="button"
                 >
                   <Send size={16} />
@@ -349,40 +379,27 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
         </div>
       )}
 
-      {/* RENDER TOP CARDS ONLY FOR NORMAL USERS */}
-      {!isAdmin && (
-        <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-          <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-soft">
-            <div className="mb-6 flex items-center justify-between gap-4">
-              <div>
-                <p className="text-xs uppercase tracking-[0.24em] text-cyan-600">Encrypted storage</p>
-                <h2 className="mt-2 text-2xl font-semibold text-slate-950">Upload Document</h2>
-              </div>
-              <Upload className="text-cyan-600" size={24} />
-            </div>
+      {!isAdmin && isDocumentsMode ? (
+        <section className="flex flex-wrap items-center justify-between gap-4 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-soft">
+          <div>
+            <p className="text-xs uppercase tracking-[0.24em] text-cyan-600">Encrypted storage</p>
+            <h2 className="mt-2 text-2xl font-semibold text-slate-950">Dokumen Saya</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Kelola file terenkripsi milikmu. Upload dokumen baru lewat tombol kecil di kanan.
+            </p>
+          </div>
+          <button
+            className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-slate-800"
+            onClick={() => setShowUploadModal(true)}
+            type="button"
+          >
+            <Upload size={16} />
+            Tambah Dokumen
+          </button>
+        </section>
+      ) : null}
 
-            <form className="grid gap-5" onSubmit={uploadDocument}>
-              <label className="grid gap-3 text-sm font-semibold text-slate-700">
-                <span>File</span>
-                <input
-                  accept=".pdf,.docx,.xlsx,.jpg,.jpeg,.png"
-                  className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
-                  onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
-                  ref={fileInputRef}
-                  required={mode === 'upload'}
-                  type="file"
-                />
-              </label>
-              <button
-                className="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={!selectedFile || uploading}
-                type="submit"
-              >
-                {uploading ? 'Uploading...' : 'Upload & Encrypt'}
-              </button>
-            </form>
-          </section>
-
+      {!isAdmin && isShareMode ? (
           <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-soft">
             <div className="mb-6 flex items-center justify-between gap-4">
               <div>
@@ -606,17 +623,92 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
               </button>
             </form>
           </section>
+      ) : null}
+
+      {isDocumentsMode ? (
+        <DataTable
+          columns={columns}
+          emptyText={isAdmin ? "No documents found on system." : "No documents found."}
+          onSearch={setSearch}
+          rows={filteredDocuments}
+          search={search}
+        />
+      ) : null}
+
+      {showUploadModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-[2rem] border border-slate-200 bg-white p-6 shadow-2xl animate-in zoom-in-95 duration-150">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-widest text-cyan-600">Encrypted upload</p>
+                <h3 className="text-lg font-bold text-slate-950">Tambah Dokumen</h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  File akan divalidasi, dienkripsi, lalu masuk ke daftar Dokumen Saya. Maksimal 10 MB.
+                </p>
+              </div>
+              <button
+                aria-label="Close upload dialog"
+                className="rounded-lg p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={uploading}
+                onClick={() => {
+                  setShowUploadModal(false)
+                  setSelectedFile(null)
+                  if (fileInputRef.current) fileInputRef.current.value = ''
+                }}
+                type="button"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form className="grid gap-5" onSubmit={uploadDocument}>
+              <label className="grid gap-3 text-sm font-semibold text-slate-700">
+                <span>File</span>
+                <input
+                  accept=".pdf,.docx,.xlsx,.jpg,.jpeg,.png"
+                  className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
+                  onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
+                  ref={fileInputRef}
+                  required
+                  type="file"
+                />
+                {selectedFile ? (
+                  <span className={`rounded-2xl px-3 py-2 text-xs font-semibold ${
+                    selectedFile.size > MAX_UPLOAD_SIZE_BYTES
+                      ? 'bg-rose-50 text-rose-700'
+                      : 'bg-cyan-50 text-cyan-700'
+                  }`}>
+                    {selectedFile.name} - {formatBytes(selectedFile.size)}
+                    {selectedFile.size > MAX_UPLOAD_SIZE_BYTES ? ' - Melebihi batas 10 MB' : ''}
+                  </span>
+                ) : null}
+              </label>
+
+              <div className="flex items-center justify-end gap-3">
+                <button
+                  className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={uploading}
+                  onClick={() => {
+                    setShowUploadModal(false)
+                    setSelectedFile(null)
+                    if (fileInputRef.current) fileInputRef.current.value = ''
+                  }}
+                  type="button"
+                >
+                  Batal
+                </button>
+                <button
+                  className="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={!selectedFile || uploading}
+                  type="submit"
+                >
+                  {uploading ? 'Uploading...' : 'Upload & Encrypt'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
-
-      {/* Main Table */}
-      <DataTable
-        columns={columns}
-        emptyText={isAdmin ? "No documents found on system." : "No documents found."}
-        onSearch={setSearch}
-        rows={filteredDocuments}
-        search={search}
-      />
 
       {editingDocument && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
@@ -750,7 +842,7 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
                 />
               ) : isPreviewableMimeType(previewFile.mime_type) ? (
                 <iframe
-                  src={previewUrl}
+                  src={previewFile.mime_type === 'application/pdf' ? createRestrictedPdfViewerUrl(previewUrl) : previewUrl}
                   title={previewFile.original_name}
                   className="w-full h-[60vh] rounded-xl border border-slate-200 bg-white"
                 />

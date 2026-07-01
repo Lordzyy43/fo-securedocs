@@ -1,9 +1,15 @@
 import { Download, Trash2, Eye, X, PencilLine } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DataTable } from '../components/DataTable.jsx'
+import { SecurePdfPreview } from '../components/SecurePdfPreview.jsx'
 import { StatusBadge } from '../components/StatusBadge.jsx'
 import { api } from '../services/api.js'
-import { createPreviewBlob, inferPreviewMimeType, isPreviewableMimeType } from '../utils/filePreview.js'
+import {
+  createPreviewBlob,
+  createRestrictedPdfViewerUrl,
+  inferPreviewMimeType,
+  isPreviewableMimeType,
+} from '../utils/filePreview.js'
 import { formatDate, getPageData } from '../utils/format.js'
 
 function sortSharesBySharedDate(shares) {
@@ -118,6 +124,41 @@ export function SharesPage({ mode, onError, onSharesChanged, onSuccess, refreshT
     downloaded: shares.filter((share) => share.status === 'downloaded').length,
   }), [shares])
 
+  const isViewOnlyPreview = previewFile?.permission === 'view'
+
+  useEffect(() => {
+    if (!isViewOnlyPreview) return undefined
+
+    function preventDefault(event) {
+      event.preventDefault()
+    }
+
+    function preventRestrictedShortcut(event) {
+      const key = event.key.toLowerCase()
+      const isRestrictedKey = ['a', 'c', 'p', 's', 'x'].includes(key)
+
+      if ((event.ctrlKey || event.metaKey) && isRestrictedKey) {
+        event.preventDefault()
+      }
+    }
+
+    document.addEventListener('copy', preventDefault, true)
+    document.addEventListener('cut', preventDefault, true)
+    document.addEventListener('contextmenu', preventDefault, true)
+    document.addEventListener('dragstart', preventDefault, true)
+    document.addEventListener('selectstart', preventDefault, true)
+    document.addEventListener('keydown', preventRestrictedShortcut, true)
+
+    return () => {
+      document.removeEventListener('copy', preventDefault, true)
+      document.removeEventListener('cut', preventDefault, true)
+      document.removeEventListener('contextmenu', preventDefault, true)
+      document.removeEventListener('dragstart', preventDefault, true)
+      document.removeEventListener('selectstart', preventDefault, true)
+      document.removeEventListener('keydown', preventRestrictedShortcut, true)
+    }
+  }, [isViewOnlyPreview])
+
   async function revokeShare() {
     if (!shareToRevoke) return
 
@@ -161,7 +202,7 @@ export function SharesPage({ mode, onError, onSharesChanged, onSuccess, refreshT
     }
   }
 
-  async function handlePreview(doc) {
+  async function handlePreview(doc, share = null) {
     setPreviewLoading(true)
     try {
       const mimeType = inferPreviewMimeType(doc)
@@ -170,7 +211,7 @@ export function SharesPage({ mode, onError, onSharesChanged, onSuccess, refreshT
         : api.previewDocumentUrl(doc)
 
       setPreviewUrl(previewUrl)
-      setPreviewFile({ ...doc, mime_type: mimeType })
+      setPreviewFile({ ...doc, mime_type: mimeType, permission: share?.permission })
     } catch (error) {
       onError(error)
     } finally {
@@ -194,8 +235,9 @@ export function SharesPage({ mode, onError, onSharesChanged, onSuccess, refreshT
     if (!selectedShare?.document) return
 
     const document = selectedShare.document
+    const share = selectedShare
     closeShareDetail()
-    await handlePreview(document)
+    await handlePreview(document, share)
     onSharesChanged()
   }
 
@@ -641,11 +683,30 @@ export function SharesPage({ mode, onError, onSharesChanged, onSuccess, refreshT
       {/* PREVIEW MODAL */}
       {previewFile && previewUrl && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-4xl rounded-[2rem] border border-slate-200 bg-white p-6 shadow-2xl animate-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
+          <div
+            className={`w-full max-w-4xl rounded-[2rem] border border-slate-200 bg-white p-6 shadow-2xl animate-in zoom-in-95 duration-150 flex flex-col max-h-[90vh] ${isViewOnlyPreview ? 'select-none' : ''}`}
+            onCopy={(event) => {
+              if (isViewOnlyPreview) event.preventDefault()
+            }}
+            onCut={(event) => {
+              if (isViewOnlyPreview) event.preventDefault()
+            }}
+            onSelect={(event) => {
+              if (isViewOnlyPreview) event.preventDefault()
+            }}
+            onSelectCapture={(event) => {
+              if (isViewOnlyPreview) event.preventDefault()
+            }}
+          >
             <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
               <div>
                 <p className="text-xs uppercase tracking-widest text-cyan-600">Secure Share Preview</p>
                 <h3 className="text-lg font-bold text-slate-950">{previewFile.original_name}</h3>
+                {previewFile.permission === 'view' ? (
+                  <p className="mt-1 text-xs font-semibold text-amber-700">
+                    View only: dokumen bisa dibaca, tetapi tombol download tidak diberikan.
+                  </p>
+                ) : null}
               </div>
               <button
                 onClick={closePreview}
@@ -656,19 +717,42 @@ export function SharesPage({ mode, onError, onSharesChanged, onSuccess, refreshT
               </button>
             </div>
 
-            <div className="flex-1 overflow-auto bg-slate-50 rounded-2xl p-4 flex items-center justify-center min-h-[50vh]">
+            <div className={`flex-1 overflow-auto bg-slate-50 rounded-2xl p-4 flex items-center justify-center min-h-[50vh] ${isViewOnlyPreview ? 'select-none' : ''}`}>
               {previewFile.mime_type?.startsWith('image/') ? (
-                <img
-                  src={previewUrl}
-                  alt={previewFile.original_name}
-                  className="max-h-[60vh] object-contain rounded-xl shadow-md"
-                />
+                <div
+                  className="relative select-none"
+                  onContextMenu={(event) => {
+                    if (isViewOnlyPreview) event.preventDefault()
+                  }}
+                >
+                  <img
+                    src={previewUrl}
+                    alt={previewFile.original_name}
+                    className="max-h-[60vh] object-contain rounded-xl shadow-md"
+                    draggable={!isViewOnlyPreview}
+                    onContextMenu={(event) => {
+                      if (isViewOnlyPreview) event.preventDefault()
+                    }}
+                  />
+                  {isViewOnlyPreview ? (
+                    <div
+                      aria-hidden="true"
+                      className="absolute inset-0 rounded-xl"
+                      onContextMenu={(event) => event.preventDefault()}
+                      onDragStart={(event) => event.preventDefault()}
+                    />
+                  ) : null}
+                </div>
               ) : isPreviewableMimeType(previewFile.mime_type) ? (
-                <iframe
-                  src={previewUrl}
-                  title={previewFile.original_name}
-                  className="w-full h-[60vh] rounded-xl border border-slate-200 bg-white"
-                />
+                isViewOnlyPreview && previewFile.mime_type === 'application/pdf' ? (
+                  <SecurePdfPreview url={previewUrl} />
+                ) : (
+                  <iframe
+                    src={previewFile.mime_type === 'application/pdf' ? createRestrictedPdfViewerUrl(previewUrl) : previewUrl}
+                    title={previewFile.original_name}
+                    className="h-[60vh] w-full rounded-xl border border-slate-200 bg-white"
+                  />
+                )
               ) : (
                 <div className="text-center p-8 max-w-md">
                   <p className="text-sm font-bold text-slate-700 mb-2">Pratinjau Tidak Didukung</p>
