@@ -23,6 +23,7 @@ function App() {
   const [loginNotice, setLoginNotice] = useState(null);
   const [incomingUnreadCount, setIncomingUnreadCount] = useState(0);
   const [sharesRefreshToken, setSharesRefreshToken] = useState(0);
+  const [shareDocumentId, setShareDocumentId] = useState("");
   const unreadFetchInFlightRef = useRef(false);
 
   const isAdmin = user?.role?.name === "admin";
@@ -33,10 +34,10 @@ function App() {
   const pageTitles = useMemo(
     () => ({
       dashboard: isAdmin ? "Command Center" : "Dashboard",
-      documents: isAdmin ? "Document Vault" : "Dokumen Saya",
-      incoming: isAdmin ? "Incoming Shares" : "Dibagikan ke Saya",
-      sent: isAdmin ? "Sent Shares" : "Riwayat Berbagi",
-      "share-oversight": "Share Oversight",
+      documents: "Dokumen Saya",
+      "share-documents": "Share Document",
+      incoming: "Dibagikan ke Saya",
+      sent: "Riwayat Berbagi",
       users: "User & Role Management",
       profile: isAdmin ? "My Profile & Security" : "Profil & Keamanan",
       audit: "Security Audit Trail",
@@ -246,25 +247,46 @@ function App() {
   function renderPage() {
     switch (activeView) {
       case "documents":
-        return (
+        return isAdmin ? (
+          <DashboardPage
+            user={user}
+            isAdmin={isAdmin}
+            onNavigate={setView}
+            onError={showError}
+          />
+        ) : (
           <DocumentsPage
+            key="documents"
             mode={activeView}
             isAdmin={isAdmin}
+            onError={showError}
+            onStartShare={(documentId) => {
+              setShareDocumentId(documentId);
+              setView("share-documents");
+            }}
+            onSuccess={(message) => setNotice({ type: "success", message })}
+          />
+        );
+      case "share-documents":
+        return isAdmin ? (
+          <DashboardPage
+            user={user}
+            isAdmin={isAdmin}
+            onNavigate={setView}
+            onError={showError}
+          />
+        ) : (
+          <DocumentsPage
+            key={`share-documents-${shareDocumentId || 'empty'}`}
+            mode={activeView}
+            isAdmin={isAdmin}
+            initialShareDocumentId={shareDocumentId}
             onError={showError}
             onSuccess={(message) => setNotice({ type: "success", message })}
           />
         );
       case "share-oversight":
-        return isAdmin ? (
-          <SharesPage
-            mode={activeView}
-            user={user}
-            onError={showError}
-            onSuccess={(message) => setNotice({ type: "success", message })}
-            onSharesChanged={refreshShareData}
-            refreshToken={sharesRefreshToken}
-          />
-        ) : (
+        return (
           <DashboardPage
             user={user}
             isAdmin={isAdmin}
@@ -274,6 +296,17 @@ function App() {
         );
       case "incoming":
       case "sent":
+        if (isAdmin) {
+          return (
+            <DashboardPage
+              user={user}
+              isAdmin={isAdmin}
+              onNavigate={setView}
+              onError={showError}
+            />
+          );
+        }
+
         return (
           <SharesPage
             mode={activeView}

@@ -22,9 +22,10 @@ function firstValidationMessage(errors = {}) {
 
 function resolveErrorMessage(data, status) {
   if (typeof data === 'string' && data.trim()) return data
-  if (data?.message) return data.message
 
   const validationMessage = firstValidationMessage(data?.errors)
+  if (status === 422 && validationMessage) return validationMessage
+  if (data?.message) return data.message
   if (validationMessage) return validationMessage
 
   if (status === 419) return 'Sesi keamanan sudah kedaluwarsa. Silakan refresh halaman lalu coba lagi.'

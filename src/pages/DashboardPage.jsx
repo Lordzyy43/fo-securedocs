@@ -1,4 +1,4 @@
-import { FileCheck2, FileText, Inbox, ScrollText, Send, Upload } from 'lucide-react'
+import { FileCheck2, FileText, Inbox, ScrollText, Send, ShieldCheck, UserCog, Users } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { StatCard } from '../components/StatCard.jsx'
 import { api } from '../services/api.js'
@@ -8,17 +8,27 @@ export function DashboardPage({ isAdmin, onError, onNavigate, user }) {
   const [documents, setDocuments] = useState([])
   const [shares, setShares] = useState([])
   const [logs, setLogs] = useState([])
+  const [managedUsers, setManagedUsers] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const requests = [api.documents(), api.shares()]
-    if (isAdmin) requests.push(api.auditLogs())
+    const requests = isAdmin
+      ? [api.adminUsers(), api.auditLogs()]
+      : [api.documents(), api.shares()]
 
     Promise.all(requests)
-      .then(([documentResponse, shareResponse, logResponse]) => {
-        setDocuments(getPageData(documentResponse))
-        setShares(getPageData(shareResponse))
-        setLogs(getPageData(logResponse))
+      .then(([firstResponse, secondResponse]) => {
+        if (isAdmin) {
+          setManagedUsers(getPageData(firstResponse))
+          setLogs(getPageData(secondResponse))
+          setDocuments([])
+          setShares([])
+          return
+        }
+
+        setDocuments(getPageData(firstResponse))
+        setShares(getPageData(secondResponse))
+        setLogs([])
       })
       .catch(onError)
       .finally(() => setLoading(false))
@@ -29,9 +39,11 @@ export function DashboardPage({ isAdmin, onError, onNavigate, user }) {
       encrypted: documents.filter((document) => document.encrypted).length,
       incoming: isAdmin ? shares.length : shares.filter((share) => share.receiver_id === user.id).length,
       sent: isAdmin ? shares.length : shares.filter((share) => share.sender_id === user.id).length,
+      activeUsers: managedUsers.filter((managedUser) => managedUser.status === 'active').length,
+      inactiveUsers: managedUsers.filter((managedUser) => managedUser.status === 'inactive').length,
       failedAudit: logs.filter((log) => log.status === 'failure').length,
     }),
-    [documents, isAdmin, logs, shares, user.id],
+    [documents, isAdmin, logs, managedUsers, shares, user.id],
   )
 
   if (loading) {
@@ -45,15 +57,17 @@ export function DashboardPage({ isAdmin, onError, onNavigate, user }) {
   return (
     <div className="grid gap-6">
       <section className="grid gap-4 xl:grid-cols-4">
-        <StatCard icon={FileText} label="Total Documents" value={documents.length} />
-        <StatCard icon={FileCheck2} label="Encrypted" tone="green" value={stats.encrypted} />
         {isAdmin ? (
           <>
-            <StatCard icon={Send} label="Share Records" tone="amber" value={shares.length} />
+            <StatCard icon={Users} label="Managed Users" value={managedUsers.length} />
+            <StatCard icon={ShieldCheck} label="Active Accounts" tone="green" value={stats.activeUsers} />
+            <StatCard icon={UserCog} label="Inactive Accounts" tone="amber" value={stats.inactiveUsers} />
             <StatCard icon={ScrollText} label="Failed Audit" tone="purple" value={stats.failedAudit} />
           </>
         ) : (
           <>
+            <StatCard icon={FileText} label="Total Documents" value={documents.length} />
+            <StatCard icon={FileCheck2} label="Encrypted" tone="green" value={stats.encrypted} />
             <StatCard icon={Inbox} label="Incoming Files" tone="amber" value={stats.incoming} />
             <StatCard icon={Send} label="Sent Files" tone="purple" value={stats.sent} />
           </>
@@ -61,57 +75,59 @@ export function DashboardPage({ isAdmin, onError, onNavigate, user }) {
       </section>
 
       <section className="grid gap-4 md:grid-cols-2">
-        <button
-          className="rounded-[2rem] border border-slate-200 bg-white p-6 text-left shadow-soft transition hover:border-cyan-300 hover:ring-1 hover:ring-cyan-100"
-          onClick={() => onNavigate('documents')}
-          type="button"
-        >
-          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-100 text-cyan-700">
-            <Upload size={22} />
-          </div>
-          <strong className="block text-lg">Upload Document</strong>
-          <p className="mt-2 text-sm text-slate-500">Validasi file dan simpan terenkripsi.</p>
-        </button>
-
-        <button
-          className="rounded-[2rem] border border-slate-200 bg-white p-6 text-left shadow-soft transition hover:border-slate-300"
-          onClick={() => onNavigate('documents')}
-          type="button"
-        >
-          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-700">
-            <FileText size={22} />
-          </div>
-          <strong className="block text-lg">Manage Documents</strong>
-          <p className="mt-2 text-sm text-slate-500">Lihat metadata, download, delete, dan share.</p>
-        </button>
-
         {isAdmin ? (
-          <button
-            className="rounded-[2rem] border border-slate-200 bg-white p-6 text-left shadow-soft transition hover:border-slate-300"
-            onClick={() => onNavigate('audit')}
-            type="button"
-          >
-            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-100 text-violet-700">
-              <ScrollText size={22} />
-            </div>
-            <strong className="block text-lg">Audit Logs</strong>
-            <p className="mt-2 text-sm text-slate-500">Monitor login, upload, download, delete, dan share.</p>
-          </button>
-        ) : null}
+          <>
+            <button
+              className="rounded-[2rem] border border-slate-200 bg-white p-6 text-left shadow-soft transition hover:border-cyan-300 hover:ring-1 hover:ring-cyan-100"
+              onClick={() => onNavigate('users')}
+              type="button"
+            >
+              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-100 text-cyan-700">
+                <Users size={22} />
+              </div>
+              <strong className="block text-lg">User & Role Management</strong>
+              <p className="mt-2 text-sm text-slate-500">Kelola akun, status aktif, reset password, dan reset PIN.</p>
+            </button>
 
-        {isAdmin ? (
-          <button
-            className="rounded-[2rem] border border-slate-200 bg-white p-6 text-left shadow-soft transition hover:border-cyan-300 hover:ring-1 hover:ring-cyan-100"
-            onClick={() => onNavigate('share-oversight')}
-            type="button"
-          >
-            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-100 text-cyan-700">
-              <Send size={22} />
-            </div>
-            <strong className="block text-lg">Share Oversight</strong>
-            <p className="mt-2 text-sm text-slate-500">Monitor pengirim, penerima, permission, dan status share.</p>
-          </button>
-        ) : null}
+            <button
+              className="rounded-[2rem] border border-slate-200 bg-white p-6 text-left shadow-soft transition hover:border-slate-300"
+              onClick={() => onNavigate('audit')}
+              type="button"
+            >
+              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-100 text-violet-700">
+                <ScrollText size={22} />
+              </div>
+              <strong className="block text-lg">Security Audit Trail</strong>
+              <p className="mt-2 text-sm text-slate-500">Pantau aktivitas sensitif tanpa membuka dokumen user.</p>
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              className="rounded-[2rem] border border-slate-200 bg-white p-6 text-left shadow-soft transition hover:border-cyan-300 hover:ring-1 hover:ring-cyan-100"
+              onClick={() => onNavigate('documents')}
+              type="button"
+            >
+              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-100 text-cyan-700">
+                <FileText size={22} />
+              </div>
+              <strong className="block text-lg">Upload Document</strong>
+              <p className="mt-2 text-sm text-slate-500">Validasi file dan simpan terenkripsi.</p>
+            </button>
+
+            <button
+              className="rounded-[2rem] border border-slate-200 bg-white p-6 text-left shadow-soft transition hover:border-slate-300"
+              onClick={() => onNavigate('documents')}
+              type="button"
+            >
+              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-700">
+                <FileText size={22} />
+              </div>
+              <strong className="block text-lg">Manage Documents</strong>
+              <p className="mt-2 text-sm text-slate-500">Lihat metadata, download, delete, dan share.</p>
+            </button>
+          </>
+        )}
       </section>
 
       <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-soft">

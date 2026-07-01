@@ -27,6 +27,14 @@ export function isPreviewableMimeType(mimeType = '') {
   return mimeType.startsWith('image/') || mimeType === 'application/pdf' || mimeType.startsWith('text/')
 }
 
+export function createRestrictedPdfViewerUrl(url) {
+  if (!url) return url
+
+  const separator = url.includes('#') ? '&' : '#'
+
+  return `${url}${separator}toolbar=0&navpanes=0&scrollbar=0&view=FitH`
+}
+
 export function createPreviewBlob(blob, mimeType) {
   if (!mimeType || blob.type === mimeType) {
     return blob
