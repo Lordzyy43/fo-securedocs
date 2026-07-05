@@ -1,9 +1,15 @@
 import { Download, Trash2, Eye, X, PencilLine } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DataTable } from '../components/DataTable.jsx'
+import { SecurePdfPreview } from '../components/SecurePdfPreview.jsx'
 import { StatusBadge } from '../components/StatusBadge.jsx'
 import { api } from '../services/api.js'
-import { createPreviewBlob, inferPreviewMimeType, isPreviewableMimeType } from '../utils/filePreview.js'
+import {
+  createPreviewBlob,
+  createRestrictedPdfViewerUrl,
+  inferPreviewMimeType,
+  isPreviewableMimeType,
+} from '../utils/filePreview.js'
 import { formatDate, getPageData } from '../utils/format.js'
 
 function sortSharesBySharedDate(shares) {
@@ -51,12 +57,16 @@ export function SharesPage({ mode, onError, onSharesChanged, onSuccess, refreshT
     }
   }, [user.id])
 
+  const isOversight = mode === 'share-oversight'
+  const isIncoming = mode === 'incoming'
+  const isSent = mode === 'sent'
+
   const fetchShares = useCallback(async () => {
-    const response = mode === 'incoming' ? await api.sharedWithMeDocuments() : await api.shares()
+    const response = isIncoming ? await api.sharedWithMeDocuments() : await api.shares()
     const data = getPageData(response)
 
-    return mode === 'incoming' ? sortSharesBySharedDate(data.map(normalizeSharedDocument)) : data
-  }, [mode, normalizeSharedDocument])
+    return isIncoming ? sortSharesBySharedDate(data.map(normalizeSharedDocument)) : data
+  }, [isIncoming, normalizeSharedDocument])
 
   const loadShares = useCallback(async ({ showLoading = false } = {}) => {
     if (fetchInFlightRef.current) return
@@ -88,9 +98,66 @@ export function SharesPage({ mode, onError, onSharesChanged, onSuccess, refreshT
   const filteredShares = useMemo(() => {
     const keyword = search.toLowerCase()
     return shares
-      .filter((share) => (mode === 'incoming' ? true : share.sender_id === user.id))
-      .filter((share) => share.document?.original_name?.toLowerCase().includes(keyword))
-  }, [mode, search, shares, user.id])
+      .filter((share) => {
+        if (isOversight || isIncoming) return true
+        return share.sender_id === user.id
+      })
+      .filter((share) => {
+        const haystack = [
+          share.document?.original_name,
+          share.sender?.name,
+          share.sender?.email,
+          share.receiver?.name,
+          share.receiver?.email,
+          share.permission,
+          share.status,
+        ].filter(Boolean).join(' ')
+
+        return haystack.toLowerCase().includes(keyword)
+      })
+  }, [isIncoming, isOversight, search, shares, user.id])
+
+  const oversightStats = useMemo(() => ({
+    total: shares.length,
+    sent: shares.filter((share) => share.status === 'sent').length,
+    read: shares.filter((share) => share.status === 'read').length,
+    downloaded: shares.filter((share) => share.status === 'downloaded').length,
+  }), [shares])
+
+  const isViewOnlyPreview = previewFile?.permission === 'view'
+
+  useEffect(() => {
+    if (!isViewOnlyPreview) return undefined
+
+    function preventDefault(event) {
+      event.preventDefault()
+    }
+
+    function preventRestrictedShortcut(event) {
+      const key = event.key.toLowerCase()
+      const isRestrictedKey = ['a', 'c', 'p', 's', 'x'].includes(key)
+
+      if ((event.ctrlKey || event.metaKey) && isRestrictedKey) {
+        event.preventDefault()
+      }
+    }
+
+    document.addEventListener('copy', preventDefault, true)
+    document.addEventListener('cut', preventDefault, true)
+    document.addEventListener('contextmenu', preventDefault, true)
+    document.addEventListener('dragstart', preventDefault, true)
+    document.addEventListener('selectstart', preventDefault, true)
+    document.addEventListener('keydown', preventRestrictedShortcut, true)
+
+    return () => {
+      document.removeEventListener('copy', preventDefault, true)
+      document.removeEventListener('cut', preventDefault, true)
+      document.removeEventListener('contextmenu', preventDefault, true)
+      document.removeEventListener('dragstart', preventDefault, true)
+      document.removeEventListener('selectstart', preventDefault, true)
+      document.removeEventListener('keydown', preventRestrictedShortcut, true)
+    }
+  }, [isViewOnlyPreview])
 
   async function revokeShare() {
     if (!shareToRevoke) return
@@ -135,7 +202,7 @@ export function SharesPage({ mode, onError, onSharesChanged, onSuccess, refreshT
     }
   }
 
-  async function handlePreview(doc) {
+  async function handlePreview(doc, share = null) {
     setPreviewLoading(true)
     try {
       const mimeType = inferPreviewMimeType(doc)
@@ -144,7 +211,7 @@ export function SharesPage({ mode, onError, onSharesChanged, onSuccess, refreshT
         : api.previewDocumentUrl(doc)
 
       setPreviewUrl(previewUrl)
-      setPreviewFile({ ...doc, mime_type: mimeType })
+      setPreviewFile({ ...doc, mime_type: mimeType, permission: share?.permission })
     } catch (error) {
       onError(error)
     } finally {
@@ -168,8 +235,9 @@ export function SharesPage({ mode, onError, onSharesChanged, onSuccess, refreshT
     if (!selectedShare?.document) return
 
     const document = selectedShare.document
+    const share = selectedShare
     closeShareDetail()
-    await handlePreview(document)
+    await handlePreview(document, share)
     onSharesChanged()
   }
 
@@ -181,11 +249,35 @@ export function SharesPage({ mode, onError, onSharesChanged, onSuccess, refreshT
         <div className="grid gap-1">
           <strong className="text-slate-950">{share.document?.original_name ?? 'Unknown document'}</strong>
           <span className="text-sm text-slate-500">
-            {mode === 'incoming' ? share.sender?.email : share.receiver?.email}
+            {isIncoming ? share.sender?.email : share.receiver?.email}
           </span>
         </div>
       ),
     },
+    ...(isOversight
+      ? [
+          {
+            key: 'sender',
+            label: 'Sender',
+            render: (share) => (
+              <div className="grid gap-1">
+                <strong className="text-slate-800">{share.sender?.name ?? '-'}</strong>
+                <span className="text-xs text-slate-500">{share.sender?.email ?? '-'}</span>
+              </div>
+            ),
+          },
+          {
+            key: 'receiver',
+            label: 'Receiver',
+            render: (share) => (
+              <div className="grid gap-1">
+                <strong className="text-slate-800">{share.receiver?.name ?? '-'}</strong>
+                <span className="text-xs text-slate-500">{share.receiver?.email ?? '-'}</span>
+              </div>
+            ),
+          },
+        ]
+      : []),
     {
       key: 'permission',
       label: 'Permission',
@@ -195,7 +287,7 @@ export function SharesPage({ mode, onError, onSharesChanged, onSuccess, refreshT
         </StatusBadge>
       ),
     },
-    ...(mode === 'sent'
+    ...(isSent || isOversight
       ? [
           {
             key: 'status',
@@ -214,7 +306,7 @@ export function SharesPage({ mode, onError, onSharesChanged, onSuccess, refreshT
       label: 'Actions',
       render: (share) => (
         <div className="flex flex-wrap items-center gap-2">
-          {mode === 'incoming' ? (
+          {isIncoming ? (
             <>
               {/* Preview is always available for incoming shares */}
               <button
@@ -239,7 +331,7 @@ export function SharesPage({ mode, onError, onSharesChanged, onSuccess, refreshT
               ) : null}
             </>
           ) : null}
-          {mode === 'sent' ? (
+          {isSent ? (
             <>
               <button
                 aria-label="Edit share permission"
@@ -258,6 +350,16 @@ export function SharesPage({ mode, onError, onSharesChanged, onSuccess, refreshT
                 <Trash2 size={16} />
               </button>
             </>
+          ) : null}
+          {isOversight ? (
+            <button
+              aria-label="View share details"
+              className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50"
+              onClick={() => setSelectedShare(share)}
+              type="button"
+            >
+              <Eye size={16} />
+            </button>
           ) : null}
         </div>
       ),
@@ -280,20 +382,62 @@ export function SharesPage({ mode, onError, onSharesChanged, onSuccess, refreshT
         </div>
       )}
 
+      {isOversight ? (
+        <section className="grid gap-4 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-soft lg:grid-cols-[1fr_auto]">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.24em] text-cyan-600">
+              Share Oversight
+            </p>
+            <h2 className="mt-2 text-2xl font-semibold text-slate-950">
+              Monitoring Berbagi Dokumen
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Pantau siapa membagikan dokumen ke siapa, permission, status baca, dan status unduh.
+            </p>
+          </div>
+          <div className="grid grid-cols-4 gap-2 text-center">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <p className="text-lg font-black text-slate-950">{oversightStats.total}</p>
+              <p className="text-[10px] font-bold uppercase text-slate-400">Total</p>
+            </div>
+            <div className="rounded-2xl border border-cyan-100 bg-cyan-50 px-4 py-3">
+              <p className="text-lg font-black text-cyan-700">{oversightStats.sent}</p>
+              <p className="text-[10px] font-bold uppercase text-cyan-600">Sent</p>
+            </div>
+            <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3">
+              <p className="text-lg font-black text-amber-700">{oversightStats.read}</p>
+              <p className="text-[10px] font-bold uppercase text-amber-600">Read</p>
+            </div>
+            <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3">
+              <p className="text-lg font-black text-emerald-700">{oversightStats.downloaded}</p>
+              <p className="text-[10px] font-bold uppercase text-emerald-600">Downloaded</p>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       <DataTable
         columns={columns}
-        emptyText={mode === 'incoming' ? 'Belum ada file masuk.' : 'Belum ada file terkirim.'}
+        emptyText={
+          isOversight
+            ? 'Belum ada aktivitas berbagi dokumen.'
+            : isIncoming
+              ? 'Belum ada file masuk.'
+              : 'Belum ada file terkirim.'
+        }
         onSearch={setSearch}
         rows={filteredShares}
         search={search}
       />
 
-      {mode === 'incoming' && selectedShare ? (
+      {(isIncoming || isOversight) && selectedShare ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
           <div className="w-full max-w-lg rounded-[2rem] border border-slate-200 bg-white p-6 shadow-2xl animate-in zoom-in-95 duration-150">
             <div className="mb-5 flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
               <div>
-                <p className="text-xs uppercase tracking-widest text-cyan-600">Incoming share</p>
+                <p className="text-xs uppercase tracking-widest text-cyan-600">
+                  {isOversight ? 'Share oversight' : 'Incoming share'}
+                </p>
                 <h3 className="text-lg font-bold text-slate-950">Share Document Detail</h3>
               </div>
               <button
@@ -316,6 +460,12 @@ export function SharesPage({ mode, onError, onSharesChanged, onSuccess, refreshT
                   <span className="text-xs font-bold uppercase tracking-widest text-slate-400">Shared by</span>
                   <span className="font-semibold text-slate-800">{selectedShare.sender?.email ?? '-'}</span>
                 </div>
+                {isOversight ? (
+                  <div className="grid gap-1 rounded-2xl bg-slate-50 p-4">
+                    <span className="text-xs font-bold uppercase tracking-widest text-slate-400">Receiver</span>
+                    <span className="font-semibold text-slate-800">{selectedShare.receiver?.email ?? '-'}</span>
+                  </div>
+                ) : null}
                 <div className="grid gap-1 rounded-2xl bg-slate-50 p-4">
                   <span className="text-xs font-bold uppercase tracking-widest text-slate-400">Permission</span>
                   <span>
@@ -363,7 +513,7 @@ export function SharesPage({ mode, onError, onSharesChanged, onSuccess, refreshT
               >
                 Close
               </button>
-              {selectedShare.permission === 'download' ? (
+              {!isOversight && selectedShare.permission === 'download' ? (
                 <button
                   className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                   onClick={() => api.downloadDocument(selectedShare.document).catch(onError)}
@@ -373,20 +523,22 @@ export function SharesPage({ mode, onError, onSharesChanged, onSuccess, refreshT
                   Download
                 </button>
               ) : null}
-              <button
-                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
-                onClick={previewSelectedShare}
-                type="button"
-              >
-                <Eye size={16} />
-                Preview File
-              </button>
+              {!isOversight ? (
+                <button
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+                  onClick={previewSelectedShare}
+                  type="button"
+                >
+                  <Eye size={16} />
+                  Preview File
+                </button>
+              ) : null}
             </div>
           </div>
         </div>
       ) : null}
 
-      {mode === 'sent' && shareToEdit ? (
+      {isSent && shareToEdit ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
           <div className="w-full max-w-lg rounded-[2rem] border border-slate-200 bg-white p-6 shadow-2xl animate-in zoom-in-95 duration-150">
             <div className="mb-5 flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
@@ -466,7 +618,7 @@ export function SharesPage({ mode, onError, onSharesChanged, onSuccess, refreshT
         </div>
       ) : null}
 
-      {mode === 'sent' && shareToRevoke ? (
+      {isSent && shareToRevoke ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
           <div className="w-full max-w-md rounded-[2rem] border border-slate-200 bg-white p-6 shadow-2xl animate-in zoom-in-95 duration-150">
             <div className="mb-5 flex items-start justify-between gap-4">
@@ -531,11 +683,30 @@ export function SharesPage({ mode, onError, onSharesChanged, onSuccess, refreshT
       {/* PREVIEW MODAL */}
       {previewFile && previewUrl && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-4xl rounded-[2rem] border border-slate-200 bg-white p-6 shadow-2xl animate-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
+          <div
+            className={`w-full max-w-4xl rounded-[2rem] border border-slate-200 bg-white p-6 shadow-2xl animate-in zoom-in-95 duration-150 flex flex-col max-h-[90vh] ${isViewOnlyPreview ? 'select-none' : ''}`}
+            onCopy={(event) => {
+              if (isViewOnlyPreview) event.preventDefault()
+            }}
+            onCut={(event) => {
+              if (isViewOnlyPreview) event.preventDefault()
+            }}
+            onSelect={(event) => {
+              if (isViewOnlyPreview) event.preventDefault()
+            }}
+            onSelectCapture={(event) => {
+              if (isViewOnlyPreview) event.preventDefault()
+            }}
+          >
             <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
               <div>
                 <p className="text-xs uppercase tracking-widest text-cyan-600">Secure Share Preview</p>
                 <h3 className="text-lg font-bold text-slate-950">{previewFile.original_name}</h3>
+                {previewFile.permission === 'view' ? (
+                  <p className="mt-1 text-xs font-semibold text-amber-700">
+                    View only: dokumen bisa dibaca, tetapi tombol download tidak diberikan.
+                  </p>
+                ) : null}
               </div>
               <button
                 onClick={closePreview}
@@ -546,19 +717,42 @@ export function SharesPage({ mode, onError, onSharesChanged, onSuccess, refreshT
               </button>
             </div>
 
-            <div className="flex-1 overflow-auto bg-slate-50 rounded-2xl p-4 flex items-center justify-center min-h-[50vh]">
+            <div className={`flex-1 overflow-auto bg-slate-50 rounded-2xl p-4 flex items-center justify-center min-h-[50vh] ${isViewOnlyPreview ? 'select-none' : ''}`}>
               {previewFile.mime_type?.startsWith('image/') ? (
-                <img
-                  src={previewUrl}
-                  alt={previewFile.original_name}
-                  className="max-h-[60vh] object-contain rounded-xl shadow-md"
-                />
+                <div
+                  className="relative select-none"
+                  onContextMenu={(event) => {
+                    if (isViewOnlyPreview) event.preventDefault()
+                  }}
+                >
+                  <img
+                    src={previewUrl}
+                    alt={previewFile.original_name}
+                    className="max-h-[60vh] object-contain rounded-xl shadow-md"
+                    draggable={!isViewOnlyPreview}
+                    onContextMenu={(event) => {
+                      if (isViewOnlyPreview) event.preventDefault()
+                    }}
+                  />
+                  {isViewOnlyPreview ? (
+                    <div
+                      aria-hidden="true"
+                      className="absolute inset-0 rounded-xl"
+                      onContextMenu={(event) => event.preventDefault()}
+                      onDragStart={(event) => event.preventDefault()}
+                    />
+                  ) : null}
+                </div>
               ) : isPreviewableMimeType(previewFile.mime_type) ? (
-                <iframe
-                  src={previewUrl}
-                  title={previewFile.original_name}
-                  className="w-full h-[60vh] rounded-xl border border-slate-200 bg-white"
-                />
+                isViewOnlyPreview && previewFile.mime_type === 'application/pdf' ? (
+                  <SecurePdfPreview url={previewUrl} />
+                ) : (
+                  <iframe
+                    src={previewFile.mime_type === 'application/pdf' ? createRestrictedPdfViewerUrl(previewUrl) : previewUrl}
+                    title={previewFile.original_name}
+                    className="h-[60vh] w-full rounded-xl border border-slate-200 bg-white"
+                  />
+                )
               ) : (
                 <div className="text-center p-8 max-w-md">
                   <p className="text-sm font-bold text-slate-700 mb-2">Pratinjau Tidak Didukung</p>

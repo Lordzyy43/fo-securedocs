@@ -1,21 +1,37 @@
-import { Download, Send, Trash2, Upload, Eye, X, PencilLine } from 'lucide-react'
+import { Check, Download, Eye, LockKeyhole, PencilLine, Search, Send, Trash2, Upload, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { DataTable } from '../components/DataTable.jsx'
 import { StatusBadge } from '../components/StatusBadge.jsx'
 import { api } from '../services/api.js'
-import { createPreviewBlob, inferPreviewMimeType, isPreviewableMimeType } from '../utils/filePreview.js'
+import {
+  createPreviewBlob,
+  createRestrictedPdfViewerUrl,
+  inferPreviewMimeType,
+  isPreviewableMimeType,
+} from '../utils/filePreview.js'
 import { formatBytes, formatDate, getPageData } from '../utils/format.js'
 
-export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
+const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024
+
+export function DocumentsPage({
+  mode,
+  isAdmin,
+  initialShareDocumentId = '',
+  onError,
+  onStartShare,
+  onSuccess,
+}) {
   const [documents, setDocuments] = useState([])
   const [users, setUsers] = useState([])
   const [search, setSearch] = useState('')
+  const [recipientSearch, setRecipientSearch] = useState('')
   const [selectedFile, setSelectedFile] = useState(null)
   const fileInputRef = useRef(null)
+  const isShareMode = mode === 'share-documents'
+  const isDocumentsMode = mode === 'documents'
   const [shareForm, setShareForm] = useState({
-    document_id: '',
-    receiver_id: '',
-    permission: 'download',
+    document_id: initialShareDocumentId ? String(initialShareDocumentId) : '',
+    recipients: [],
     message: '',
   })
   const [loading, setLoading] = useState(true)
@@ -28,6 +44,7 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
   const [previewLoading, setPreviewLoading] = useState(false)
   const [editingDocument, setEditingDocument] = useState(null)
   const [documentToDelete, setDocumentToDelete] = useState(null)
+  const [showUploadModal, setShowUploadModal] = useState(false)
   const [editName, setEditName] = useState('')
   const [deleting, setDeleting] = useState(false)
 
@@ -81,10 +98,16 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
     event.preventDefault()
     if (!selectedFile) return
 
+    if (selectedFile.size > MAX_UPLOAD_SIZE_BYTES) {
+      onError(new Error('Ukuran file maksimal 10 MB. Pilih file yang lebih kecil.'))
+      return
+    }
+
     setUploading(true)
     try {
       await api.uploadDocument(selectedFile)
       setSelectedFile(null)
+      setShowUploadModal(false)
       if (fileInputRef.current) {
         fileInputRef.current.value = ''
       }
@@ -138,18 +161,82 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
 
   async function shareDocument(event) {
     event.preventDefault()
+    if (!shareForm.recipients.length) return
+
     setSharing(true)
 
     try {
-      await api.createShare(shareForm)
-      setShareForm({ document_id: '', receiver_id: '', permission: 'download', message: '' })
-      onSuccess('Dokumen berhasil dibagikan.')
+      await api.createShare({
+        document_id: shareForm.document_id,
+        recipients: shareForm.recipients.map((recipient) => ({
+          receiver_id: Number(recipient.receiver_id),
+          permission: recipient.permission,
+        })),
+        message: shareForm.message,
+      })
+      setShareForm({ document_id: '', recipients: [], message: '' })
+      onSuccess(`Dokumen berhasil dibagikan ke ${shareForm.recipients.length} penerima.`)
     } catch (error) {
       onError(error)
     } finally {
       setSharing(false)
     }
   }
+
+  function toggleRecipient(userId) {
+    const receiverId = String(userId)
+    const alreadySelected = shareForm.recipients.some((recipient) => recipient.receiver_id === receiverId)
+
+    setShareForm({
+      ...shareForm,
+      recipients: alreadySelected
+        ? shareForm.recipients.filter((recipient) => recipient.receiver_id !== receiverId)
+        : [...shareForm.recipients, { receiver_id: receiverId, permission: 'view' }],
+    })
+  }
+
+  function updateRecipientPermission(userId, permission) {
+    const receiverId = String(userId)
+
+    setShareForm({
+      ...shareForm,
+      recipients: shareForm.recipients.map((recipient) => (
+        recipient.receiver_id === receiverId ? { ...recipient, permission } : recipient
+      )),
+    })
+  }
+
+  const selectedRecipients = useMemo(() => (
+    shareForm.recipients
+      .map((recipient) => ({
+        ...recipient,
+        user: users.find((user) => String(user.id) === recipient.receiver_id),
+      }))
+      .filter((recipient) => recipient.user)
+  ), [shareForm.recipients, users])
+
+  const filteredShareUsers = useMemo(() => {
+    const keyword = recipientSearch.toLowerCase().trim()
+    if (!keyword) return users
+
+    return users.filter((user) => (
+      [user.name, user.email]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(keyword)
+    ))
+  }, [recipientSearch, users])
+
+  const sharePermissionStats = useMemo(() => ({
+    view: selectedRecipients.filter((recipient) => recipient.permission === 'view').length,
+    download: selectedRecipients.filter((recipient) => recipient.permission === 'download').length,
+  }), [selectedRecipients])
+
+  const selectedDocument = useMemo(
+    () => documents.find((document) => String(document.id) === shareForm.document_id),
+    [documents, shareForm.document_id],
+  )
 
   async function handlePreview(doc) {
     setPreviewLoading(true)
@@ -241,7 +328,14 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
                 <button
                   aria-label="Select for sharing"
                   className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50"
-                  onClick={() => setShareForm({ ...shareForm, document_id: String(document.id) })}
+                  onClick={() => {
+                    if (onStartShare) {
+                      onStartShare(String(document.id))
+                      return
+                    }
+
+                    setShareForm({ ...shareForm, document_id: String(document.id) })
+                  }}
                   type="button"
                 >
                   <Send size={16} />
@@ -285,40 +379,27 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
         </div>
       )}
 
-      {/* RENDER TOP CARDS ONLY FOR NORMAL USERS */}
-      {!isAdmin && (
-        <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-          <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-soft">
-            <div className="mb-6 flex items-center justify-between gap-4">
-              <div>
-                <p className="text-xs uppercase tracking-[0.24em] text-cyan-600">Encrypted storage</p>
-                <h2 className="mt-2 text-2xl font-semibold text-slate-950">Upload Document</h2>
-              </div>
-              <Upload className="text-cyan-600" size={24} />
-            </div>
+      {!isAdmin && isDocumentsMode ? (
+        <section className="flex flex-wrap items-center justify-between gap-4 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-soft">
+          <div>
+            <p className="text-xs uppercase tracking-[0.24em] text-cyan-600">Encrypted storage</p>
+            <h2 className="mt-2 text-2xl font-semibold text-slate-950">Dokumen Saya</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Kelola file terenkripsi milikmu. Upload dokumen baru lewat tombol kecil di kanan.
+            </p>
+          </div>
+          <button
+            className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-slate-800"
+            onClick={() => setShowUploadModal(true)}
+            type="button"
+          >
+            <Upload size={16} />
+            Tambah Dokumen
+          </button>
+        </section>
+      ) : null}
 
-            <form className="grid gap-5" onSubmit={uploadDocument}>
-              <label className="grid gap-3 text-sm font-semibold text-slate-700">
-                <span>File</span>
-                <input
-                  accept=".pdf,.docx,.xlsx,.jpg,.jpeg,.png"
-                  className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
-                  onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
-                  ref={fileInputRef}
-                  required={mode === 'upload'}
-                  type="file"
-                />
-              </label>
-              <button
-                className="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={!selectedFile || uploading}
-                type="submit"
-              >
-                {uploading ? 'Uploading...' : 'Upload & Encrypt'}
-              </button>
-            </form>
-          </section>
-
+      {!isAdmin && isShareMode ? (
           <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-soft">
             <div className="mb-6 flex items-center justify-between gap-4">
               <div>
@@ -346,34 +427,182 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
                 </select>
               </label>
 
-              <label className="grid gap-3 text-sm font-semibold text-slate-700">
-                <span>Receiver</span>
-                <select
-                  className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
-                  onChange={(event) => setShareForm({ ...shareForm, receiver_id: event.target.value })}
-                  required
-                  value={shareForm.receiver_id}
-                >
-                  <option value="">Select receiver</option>
-                  {users.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {user.name} - {user.email}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className="grid gap-4 text-sm font-semibold text-slate-700">
+                <div className="overflow-hidden rounded-[1.75rem] border border-slate-200 bg-slate-50">
+                  <div className="border-b border-slate-200 bg-white p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.24em] text-cyan-600">
+                          Access recipients
+                        </p>
+                        <h3 className="mt-1 text-lg font-black text-slate-950">
+                          Pilih penerima & permission
+                        </h3>
+                        <p className="mt-1 text-xs font-medium leading-relaxed text-slate-500">
+                          Default akses adalah View only. Aktifkan Download hanya untuk penerima yang memang boleh menyimpan file.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <StatusBadge tone={selectedRecipients.length ? 'info' : 'neutral'}>
+                          {selectedRecipients.length} penerima
+                        </StatusBadge>
+                        <StatusBadge tone="neutral">{sharePermissionStats.view} view</StatusBadge>
+                        <StatusBadge tone="success">{sharePermissionStats.download} download</StatusBadge>
+                      </div>
+                    </div>
 
-              <label className="grid gap-3 text-sm font-semibold text-slate-700">
-                <span>Permission</span>
-                <select
-                  className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
-                  onChange={(event) => setShareForm({ ...shareForm, permission: event.target.value })}
-                  value={shareForm.permission}
-                >
-                  <option value="download">Download</option>
-                  <option value="view">View only</option>
-                </select>
-              </label>
+                    <div className="mt-4 rounded-2xl border border-cyan-100 bg-cyan-50/70 p-3 text-xs font-semibold leading-relaxed text-cyan-900">
+                      Dokumen yang dipilih:
+                      <span className="ml-1 font-black text-cyan-950">
+                        {selectedDocument?.original_name ?? 'Belum ada dokumen dipilih'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 p-4">
+                    <label className="relative block">
+                      <Search
+                        className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+                        size={16}
+                      />
+                      <input
+                        className="h-12 w-full rounded-2xl border border-slate-200 bg-white pl-11 pr-4 text-sm font-semibold text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
+                        onChange={(event) => setRecipientSearch(event.target.value)}
+                        placeholder="Cari nama atau email penerima..."
+                        type="search"
+                        value={recipientSearch}
+                      />
+                    </label>
+
+                    <div className="max-h-[24rem] overflow-y-auto pr-1">
+                      {users.length ? (
+                        filteredShareUsers.length ? (
+                          <div className="grid gap-3">
+                            {filteredShareUsers.map((user) => {
+                              const selectedRecipient = shareForm.recipients.find(
+                                (recipient) => recipient.receiver_id === String(user.id),
+                              )
+
+                              return (
+                                <div
+                                  className={`group rounded-[1.35rem] border bg-white p-3 transition ${
+                                    selectedRecipient
+                                      ? 'border-cyan-300 shadow-sm ring-4 ring-cyan-50'
+                                      : 'border-slate-200 hover:border-cyan-200 hover:shadow-sm'
+                                  }`}
+                                  key={user.id}
+                                >
+                                  <div className="flex flex-wrap items-center gap-3">
+                                    <button
+                                      aria-pressed={Boolean(selectedRecipient)}
+                                      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border text-sm font-black transition ${
+                                        selectedRecipient
+                                          ? 'border-cyan-500 bg-cyan-500 text-white'
+                                          : 'border-slate-200 bg-slate-50 text-slate-500 group-hover:border-cyan-200 group-hover:bg-cyan-50 group-hover:text-cyan-700'
+                                      }`}
+                                      onClick={() => toggleRecipient(user.id)}
+                                      type="button"
+                                    >
+                                      {selectedRecipient ? <Check size={17} /> : user.name?.slice(0, 2).toUpperCase()}
+                                    </button>
+
+                                    <button
+                                      className="min-w-0 flex-1 text-left"
+                                      onClick={() => toggleRecipient(user.id)}
+                                      type="button"
+                                    >
+                                      <span className="block truncate font-black text-slate-950">{user.name}</span>
+                                      <span className="block truncate text-xs font-semibold text-slate-500">{user.email}</span>
+                                    </button>
+
+                                    <StatusBadge tone={selectedRecipient ? 'info' : 'neutral'}>
+                                      {selectedRecipient ? 'Dipilih' : 'Belum dipilih'}
+                                    </StatusBadge>
+                                  </div>
+
+                                  {selectedRecipient ? (
+                                    <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-2">
+                                      <div className="grid gap-2 sm:grid-cols-2">
+                                        <button
+                                          className={`rounded-xl px-3 py-3 text-left text-xs font-black transition ${
+                                            selectedRecipient.permission === 'view'
+                                              ? 'bg-slate-950 text-white shadow-sm'
+                                              : 'bg-white text-slate-600 hover:bg-slate-100'
+                                          }`}
+                                          onClick={() => updateRecipientPermission(user.id, 'view')}
+                                          type="button"
+                                        >
+                                          <span className="flex items-center gap-2">
+                                            <Eye size={15} />
+                                            View only
+                                          </span>
+                                          <span className="mt-1 block text-[11px] font-semibold opacity-75">
+                                            Bisa melihat/preview, tidak bisa download.
+                                          </span>
+                                        </button>
+                                        <button
+                                          className={`rounded-xl px-3 py-3 text-left text-xs font-black transition ${
+                                            selectedRecipient.permission === 'download'
+                                              ? 'bg-emerald-600 text-white shadow-sm'
+                                              : 'bg-white text-slate-600 hover:bg-emerald-50 hover:text-emerald-700'
+                                          }`}
+                                          onClick={() => updateRecipientPermission(user.id, 'download')}
+                                          type="button"
+                                        >
+                                          <span className="flex items-center gap-2">
+                                            <Download size={15} />
+                                            Download
+                                          </span>
+                                          <span className="mt-1 block text-[11px] font-semibold opacity-75">
+                                            Bisa preview dan mengunduh dokumen.
+                                          </span>
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        ) : (
+                          <p className="rounded-2xl border border-dashed border-slate-200 bg-white p-4 text-sm font-medium text-slate-500">
+                            Tidak ada user yang cocok dengan pencarian.
+                          </p>
+                        )
+                      ) : (
+                        <p className="rounded-2xl border border-dashed border-slate-200 bg-white p-4 text-sm font-medium text-slate-500">
+                          Belum ada user aktif yang bisa dipilih sebagai penerima.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {selectedRecipients.length ? (
+                  <div className="rounded-[1.75rem] border border-cyan-100 bg-gradient-to-br from-cyan-50 to-white p-4">
+                    <div className="mb-3 flex items-center gap-2 text-cyan-800">
+                      <LockKeyhole size={16} />
+                      <p className="text-xs font-black uppercase tracking-[0.2em]">Ringkasan akses final</p>
+                    </div>
+                    <div className="grid gap-2">
+                      {selectedRecipients.map((recipient) => (
+                        <div
+                          className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white bg-white/90 px-3 py-2 shadow-sm"
+                          key={recipient.receiver_id}
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-black text-slate-900">{recipient.user.name}</p>
+                            <p className="truncate text-xs font-medium text-slate-500">{recipient.user.email}</p>
+                          </div>
+                          <StatusBadge tone={recipient.permission === 'download' ? 'success' : 'neutral'}>
+                            {recipient.permission === 'download' ? 'Download allowed' : 'View only'}
+                          </StatusBadge>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
 
               <label className="grid gap-3 text-sm font-semibold text-slate-700">
                 <span>Message</span>
@@ -387,24 +616,99 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
 
               <button
                 className="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={sharing}
+                disabled={sharing || !shareForm.document_id || !shareForm.recipients.length}
                 type="submit"
               >
-                {sharing ? 'Sharing...' : 'Share now'}
+                {sharing ? 'Sharing...' : `Share to ${shareForm.recipients.length || 0} receiver`}
               </button>
             </form>
           </section>
+      ) : null}
+
+      {isDocumentsMode ? (
+        <DataTable
+          columns={columns}
+          emptyText={isAdmin ? "No documents found on system." : "No documents found."}
+          onSearch={setSearch}
+          rows={filteredDocuments}
+          search={search}
+        />
+      ) : null}
+
+      {showUploadModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-[2rem] border border-slate-200 bg-white p-6 shadow-2xl animate-in zoom-in-95 duration-150">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-widest text-cyan-600">Encrypted upload</p>
+                <h3 className="text-lg font-bold text-slate-950">Tambah Dokumen</h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  File akan divalidasi, dienkripsi, lalu masuk ke daftar Dokumen Saya. Maksimal 10 MB.
+                </p>
+              </div>
+              <button
+                aria-label="Close upload dialog"
+                className="rounded-lg p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={uploading}
+                onClick={() => {
+                  setShowUploadModal(false)
+                  setSelectedFile(null)
+                  if (fileInputRef.current) fileInputRef.current.value = ''
+                }}
+                type="button"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form className="grid gap-5" onSubmit={uploadDocument}>
+              <label className="grid gap-3 text-sm font-semibold text-slate-700">
+                <span>File</span>
+                <input
+                  accept=".pdf,.docx,.xlsx,.jpg,.jpeg,.png"
+                  className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
+                  onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
+                  ref={fileInputRef}
+                  required
+                  type="file"
+                />
+                {selectedFile ? (
+                  <span className={`rounded-2xl px-3 py-2 text-xs font-semibold ${
+                    selectedFile.size > MAX_UPLOAD_SIZE_BYTES
+                      ? 'bg-rose-50 text-rose-700'
+                      : 'bg-cyan-50 text-cyan-700'
+                  }`}>
+                    {selectedFile.name} - {formatBytes(selectedFile.size)}
+                    {selectedFile.size > MAX_UPLOAD_SIZE_BYTES ? ' - Melebihi batas 10 MB' : ''}
+                  </span>
+                ) : null}
+              </label>
+
+              <div className="flex items-center justify-end gap-3">
+                <button
+                  className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={uploading}
+                  onClick={() => {
+                    setShowUploadModal(false)
+                    setSelectedFile(null)
+                    if (fileInputRef.current) fileInputRef.current.value = ''
+                  }}
+                  type="button"
+                >
+                  Batal
+                </button>
+                <button
+                  className="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={!selectedFile || uploading}
+                  type="submit"
+                >
+                  {uploading ? 'Uploading...' : 'Upload & Encrypt'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
-
-      {/* Main Table */}
-      <DataTable
-        columns={columns}
-        emptyText={isAdmin ? "No documents found on system." : "No documents found."}
-        onSearch={setSearch}
-        rows={filteredDocuments}
-        search={search}
-      />
 
       {editingDocument && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
@@ -538,7 +842,7 @@ export function DocumentsPage({ mode, isAdmin, onError, onSuccess }) {
                 />
               ) : isPreviewableMimeType(previewFile.mime_type) ? (
                 <iframe
-                  src={previewUrl}
+                  src={previewFile.mime_type === 'application/pdf' ? createRestrictedPdfViewerUrl(previewUrl) : previewUrl}
                   title={previewFile.original_name}
                   className="w-full h-[60vh] rounded-xl border border-slate-200 bg-white"
                 />
